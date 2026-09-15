@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: condominio
+      POSTGRES_PASSWORD: condominio
+      POSTGRES_DB: condominio_gestao
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U condominio -d condominio_gestao"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: condominio
+      MINIO_ROOT_PASSWORD: condominio123
+    ports:
+      - "9000:9000" # API S3-compatível
+      - "9001:9001" # console web
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Cria o bucket de anexos automaticamente na primeira subida - sem isso o bucket
+  # não existe e o upload de documentos (item 4.9) falha.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 condominio condominio123 &&
+      mc mb --ignore-existing local/condominio-gestao
+      "
+
+  # O backend ainda não está neste compose (sobe via `mvn spring-boot:run`, ver README).
+  # O navegador só fala com o próprio Next (mesma origem); quem chama o backend é o
+  # servidor Next via proxy (`rewrites()` em next.config.ts), por isso `host.docker.internal`
+  # (de dentro do container) e não `localhost`.
+  #
+  # ⚠️ BACKEND_URL tem que ser build ARG, não `environment:` (correção - antes estava só
+  # em `environment:`, que o Next ignora: `rewrites()` resolve o destino durante `npm run
+  # build` e grava fixo em `.next/routes-manifest.json`; o `server.js` do build standalone
+  # nunca lê essa env em runtime, ver comentário no Dockerfile). Com `environment:` sozinho,
+  # `docker compose build frontend` sempre caía no default do Dockerfile
+  # (`http://backend:8080`, pensado pra um deploy com serviço `backend` no compose, que
+  # este projeto ainda não tem) - toda chamada de API do frontend rodando em Docker dava
+  # 500 (`getaddrinfo ENOTFOUND backend`), mesmo com o backend local rodando normal. Com
+  # `args:` aqui, mudar BACKEND_URL passa a exigir rebuild de verdade (não só recriar o
+  # container) - é assim mesmo, é build-time.
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        BACKEND_URL: ${BACKEND_URL:-http://host.docker.internal:8080}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  minio_data:

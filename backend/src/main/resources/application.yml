@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: condominio-gestao-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/condominio_gestao
+    username: condominio
+    password: condominio
+
+  jpa:
+    hibernate:
+      # Flyway é o dono do schema - Hibernate só valida que as entidades batem com as
+      # tabelas reais, nunca gera/altera DDL sozinho.
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  # Upload de anexo de demanda (item 4.9) - imagem ou vídeo, um arquivo por requisição
+  # (ver DemandaDocumentoController). O limite de verdade por TIPO (tamanhoMaximoFotoMb/
+  # tamanhoMaximoVideoMb) é um PARÂMETRO editável pelo administrador sem deploy (tabela
+  # `parametros`, ver ParametroService/DemandaDocumentoService) - este aqui é só o teto
+  # bruto do Spring, que esse sim só muda com restart. Deliberadamente bem mais alto que o
+  # maior valor plausível de parâmetro (senão o Spring rejeitaria o upload antes da
+  # aplicação conseguir aplicar o parâmetro e devolver a mensagem de erro certa) - dá
+  # espaço de sobra pro administrador aumentar o limite de vídeo sem precisar pedir pra
+  # alguém mexer aqui também.
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 55MB
+
+server:
+  port: 8080
+
+# Swagger UI em /swagger-ui.html, spec JSON crua em /v3/api-docs
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+# JWT - ver com.condominiogestao.security.JwtService.
+# ⚠️ O default do secret é só pra dev local. Em produção, JWT_SECRET tem que vir de um
+# valor gerado de verdade (32+ bytes aleatórios) via variável de ambiente/secret manager.
+jwt:
+  secret: ${JWT_SECRET:dev-only-secret-troque-isso-em-producao-1234567890abcdefghij}
+  expiracao-completo-ms: 43200000 # 12h - sessão de trabalho num condomínio
+  expiracao-pre-auth-ms: 300000   # 5min - só pra dar tempo de escolher o contexto
+
+# Senha de toda Pessoa nova (Funcionario/Morador/Administrador) - nunca serve pra
+# logar de verdade (Pessoa.precisaTrocarSenha nasce true), só pra abrir o fluxo
+# guiado de troca (POST /api/auth/verificar-identidade + /api/auth/trocar-senha).
+auth:
+  senha-padrao: Trocar@123
+
+# Storage de anexos (item 4.9) - MinIO local / Cloudflare R2 em produção (ver docs/modelo-dados.md)
+storage:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:condominio}
+  secret-key: ${MINIO_SECRET_KEY:condominio123}
+  bucket: ${MINIO_BUCKET:condominio-gestao}

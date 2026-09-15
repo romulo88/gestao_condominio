@@ -1,0 +1,19 @@
+# O frontend tem repositorio proprio (gestao-condominio-web). Ignorado aqui de proposito:
+# a pasta continua no disco pro desenvolvimento local seguir igual, mas quem versiona ela
+# e o outro repositorio.
+/frontend/
+
+# Backend (Java/Maven)
+backend/target/
+*.class
+
+# Comum
+.env
+*.log
+.idea/
+.vscode/
+.claude/settings.local.json
+
+# Descartes locais
+_to_delete/
+_*.tgz
