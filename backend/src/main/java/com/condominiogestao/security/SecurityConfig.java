@@ -61,7 +61,13 @@ public class SecurityConfig {
      * mesma Wi-Fi) e domínios de túnel ngrok (testar pelo celular via internet, PWA - ver
      * HANDOFF.md v120). Usa `allowedOriginPatterns` (não `allowedOrigins`) porque precisa
      * de wildcard + `allowCredentials(true)` juntos, o que o Spring só permite assim.
-     * Ajustar/restringir quando existir um domínio de produção de verdade.
+     *
+     * Domínio de produção (romtechsolucoes.com.br): mesmo o navegador só falando com uma
+     * origem só (o proxy /api/* do Next é servidor-a-servidor, ver DEPLOY.md), o Next
+     * repassa o header Origin do navegador sem alterar quando encaminha pro backend - sem
+     * essas duas entradas aqui, o CorsFilter do Spring rejeita com 403 "Invalid CORS
+     * request" antes mesmo de chegar no AuthService (sintoma: login funciona via curl sem
+     * header Origin, mas falha no navegador de verdade).
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
@@ -71,7 +77,9 @@ public class SecurityConfig {
                 "http://192.168.*.*:*",
                 "https://*.ngrok-free.dev",
                 "https://*.ngrok-free.app",
-                "https://*.ngrok.app"));
+                "https://*.ngrok.app",
+                "https://romtechsolucoes.com.br",
+                "https://www.romtechsolucoes.com.br"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
