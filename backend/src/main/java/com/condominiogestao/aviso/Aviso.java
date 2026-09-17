@@ -64,6 +64,13 @@ public class Aviso {
     @Column(name = "data_expiracao")
     private LocalDateTime dataExpiracao;
 
+    /** Reservado pra 1 aviso de "informações úteis" (ex: telefones da administração) que
+     * deve sempre aparecer primeiro no quadro - pedido do Romulo. Só 1 por condomínio ao
+     * mesmo tempo: garantido em {@link AvisoService#fixarNoTopo} (desfixa o anterior antes
+     * de fixar o novo) e reforçado no banco por um índice único parcial (V24). */
+    @Column(name = "fixado_no_topo", nullable = false)
+    private boolean fixadoNoTopo = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

@@ -2,6 +2,7 @@ package com.condominiogestao.aviso;
 
 import com.condominiogestao.aviso.dto.AvisoCreateRequest;
 import com.condominiogestao.aviso.dto.AvisoResponse;
+import com.condominiogestao.aviso.dto.AvisoUpdateRequest;
 import com.condominiogestao.common.Autorizacao;
 import com.condominiogestao.common.ForbiddenException;
 import com.condominiogestao.common.ResourceNotFoundException;
@@ -54,7 +55,7 @@ public class AvisoService {
      * administrador (qualquer condomínio) ou funcionário desse condomínio (qualquer perfil). */
     public List<AvisoResponse> listarTodos(ContextoAutenticado contexto, Integer condominioId) {
         Autorizacao.exigirAdministradorOuFuncionarioDoCondominio(contexto, condominioId);
-        return repository.findByCondominioIdOrderByCreatedAtDesc(condominioId).stream()
+        return repository.findByCondominioIdOrderByFixadoNoTopoDescCreatedAtDesc(condominioId).stream()
                 .map(AvisoResponse::from)
                 .toList();
     }
@@ -89,6 +90,21 @@ public class AvisoService {
         return AvisoResponse.from(repository.save(aviso));
     }
 
+    /** Corrige descrição/expiração de um aviso já existente - mesma autorização de {@link
+     * #desativar} (não exige ser o autor original, qualquer funcionário do condomínio ou
+     * administrador pode corrigir). Autor e condomínio não mudam por essa tela. */
+    @Transactional
+    public AvisoResponse atualizar(ContextoAutenticado contexto, Integer id, AvisoUpdateRequest request) {
+        Aviso aviso =
+                repository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Aviso não encontrado: " + id));
+        Autorizacao.exigirAdministradorOuFuncionarioDoCondominio(contexto, aviso.getCondominio().getId());
+
+        aviso.setDescricao(request.descricao());
+        aviso.setDataExpiracao(request.dataExpiracao());
+
+        return AvisoResponse.from(repository.save(aviso));
+    }
+
     /** Administrador (qualquer condomínio, supervisão) ou funcionário desse condomínio
      * (qualquer perfil) - desativar não exige ser o autor original do aviso. */
     @Transactional
@@ -99,6 +115,39 @@ public class AvisoService {
 
         aviso.setSituacao(Situacao.inativo);
 
+        return AvisoResponse.from(repository.save(aviso));
+    }
+
+    /** Fixa este aviso no topo do quadro - reservado pra "informações úteis" (ex: telefones
+     * da administração), pedido do Romulo. Desfixa automaticamente qualquer outro aviso do
+     * MESMO condomínio que já estivesse fixado, na mesma transação (só 1 por vez - ver
+     * também o índice único parcial da V24). Mesma autorização de {@link #desativar}. */
+    @Transactional
+    public AvisoResponse fixarNoTopo(ContextoAutenticado contexto, Integer id) {
+        Aviso aviso =
+                repository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Aviso não encontrado: " + id));
+        Autorizacao.exigirAdministradorOuFuncionarioDoCondominio(contexto, aviso.getCondominio().getId());
+
+        repository.findByCondominioIdAndFixadoNoTopoTrue(aviso.getCondominio().getId())
+                .filter(fixadoAtual -> !fixadoAtual.getId().equals(aviso.getId()))
+                .ifPresent(fixadoAtual -> {
+                    fixadoAtual.setFixadoNoTopo(false);
+                    repository.save(fixadoAtual);
+                });
+
+        aviso.setFixadoNoTopo(true);
+        return AvisoResponse.from(repository.save(aviso));
+    }
+
+    /** Remove o destaque - o aviso volta a ordenar só por data, como qualquer outro. Mesma
+     * autorização de {@link #desativar}. */
+    @Transactional
+    public AvisoResponse desfixarNoTopo(ContextoAutenticado contexto, Integer id) {
+        Aviso aviso =
+                repository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Aviso não encontrado: " + id));
+        Autorizacao.exigirAdministradorOuFuncionarioDoCondominio(contexto, aviso.getCondominio().getId());
+
+        aviso.setFixadoNoTopo(false);
         return AvisoResponse.from(repository.save(aviso));
     }
 

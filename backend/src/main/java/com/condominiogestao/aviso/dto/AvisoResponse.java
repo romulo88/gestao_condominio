@@ -12,6 +12,7 @@ public record AvisoResponse(
         String descricao,
         Situacao situacao,
         LocalDateTime dataExpiracao,
+        boolean fixadoNoTopo,
         LocalDateTime createdAt,
         LocalDateTime updatedAt) {
 
@@ -24,6 +25,7 @@ public record AvisoResponse(
                 aviso.getDescricao(),
                 aviso.getSituacao(),
                 aviso.getDataExpiracao(),
+                aviso.isFixadoNoTopo(),
                 aviso.getCreatedAt(),
                 aviso.getUpdatedAt());
     }
