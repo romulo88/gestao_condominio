@@ -64,9 +64,13 @@ public class DemandaAcessoSigilosoService {
         return repository.findByDemandaId(demandaId).stream().map(DemandaAcessoSigilosoResponse::from).toList();
     }
 
-    /** Todo mundo (morador ou funcionário) com vínculo ATIVO nesse condomínio - alimenta a
-     * combo de busca do "Gerenciar acesso" (nome + unidade + CPF), em vez da pessoa
-     * precisar decorar o CPF de quem quer indicar. Mesma autorização de {@link #listar}. */
+    /** Todo morador com vínculo ATIVO, e todo funcionário com vínculo ATIVO e login (perfil
+     * preenchido) nesse condomínio - alimenta a combo de busca do "Gerenciar acesso" (nome +
+     * unidade/perfil), em vez da pessoa precisar decorar o CPF de quem quer indicar.
+     * Funcionário SEM perfil não tem como abrir o sistema pra ver a demanda mesmo tendo
+     * acesso concedido (pedido do Romulo: "não faz sentido colocar uma pessoa sem perfil na
+     * listagem") - morador não tem esse filtro porque já sempre loga como morador, não
+     * existe "morador sem perfil". Mesma autorização de {@link #listar}. */
     public List<CandidatoAcessoResponse> listarCandidatos(ContextoAutenticado contexto, Integer demandaId) {
         Demanda demanda = buscarDemanda(demandaId);
         exigirPodeGerenciar(contexto, demanda);
@@ -86,7 +90,8 @@ public class DemandaAcessoSigilosoService {
 
         funcionarioCondominioRepository.findByCondominioId(condominioId).stream()
                 .filter(vinculo -> vinculo.getSituacao() == Situacao.ativo
-                        && vinculo.getFuncionario().getSituacao() == Situacao.ativo)
+                        && vinculo.getFuncionario().getSituacao() == Situacao.ativo
+                        && vinculo.getPerfil() != null)
                 .forEach(vinculo -> candidatos.add(new CandidatoAcessoResponse(
                         vinculo.getFuncionario().getCpf(),
                         vinculo.getFuncionario().getNome(),
