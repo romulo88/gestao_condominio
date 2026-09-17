@@ -26,8 +26,10 @@ import org.hibernate.annotations.UpdateTimestamp;
  * "Piscina interditada devido a vazamentos"). Ideia é reduzir demandas desnecessárias -
  * a pessoa já vê o aviso ao logar, em vez de abrir uma demanda pra algo já sabido.
  *
- * <p>Um aviso fica "visível" quando {@code situacao = ativo} <b>e</b> ({@code dataExpiracao}
- * é nula <b>ou</b> ainda não passou) - ver {@link AvisoRepository#findVisiveisPorCondominio}.
+ * <p>Um aviso fica "visível" quando {@code situacao = ativo} <b>e</b> ({@code fixadoNoTopo}
+ * <b>ou</b> {@code dataExpiracao} é nula <b>ou</b> ainda não passou) - ver {@link
+ * AvisoRepository#findVisiveisPorCondominio}. Fixado no topo ignora a expiração de
+ * propósito (pedido do Romulo: é "fixo", a data não importa - só desativando ele some).
  * {@code situacao} existe separado da expiração pra cobrir o caso de resolver o problema
  * antes do prazo (ex: piscina liberada no dia 2, mas a expiração era pro dia 5).
  */

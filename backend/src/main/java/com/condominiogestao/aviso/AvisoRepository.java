@@ -12,9 +12,13 @@ public interface AvisoRepository extends JpaRepository<Aviso, Integer> {
     /** Fixado no topo sempre primeiro (pedido do Romulo), dentro disso mais recente primeiro. */
     List<Aviso> findByCondominioIdOrderByFixadoNoTopoDescCreatedAtDesc(Integer condominioId);
 
+    /** Fixado no topo (pedido do Romulo: "por entender que ele é fixo... a data de
+     * expiração não importe") ignora completamente a expiração - fica visível enquanto
+     * {@code situacao = ativo}, mesmo com {@code dataExpiracao} no passado (ou nem
+     * preenchida). Só desativando ele some do mural. */
     @Query("SELECT a FROM Aviso a WHERE a.condominio.id = :condominioId "
             + "AND a.situacao = com.condominiogestao.common.Situacao.ativo "
-            + "AND (a.dataExpiracao IS NULL OR a.dataExpiracao > :agora) "
+            + "AND (a.fixadoNoTopo = true OR a.dataExpiracao IS NULL OR a.dataExpiracao > :agora) "
             + "ORDER BY a.fixadoNoTopo DESC, a.createdAt DESC")
     List<Aviso> findVisiveisPorCondominio(@Param("condominioId") Integer condominioId, @Param("agora") LocalDateTime agora);
 
