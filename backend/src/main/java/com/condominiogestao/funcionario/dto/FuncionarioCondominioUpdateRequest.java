@@ -13,5 +13,6 @@ import jakarta.validation.constraints.Email;
  * pra expressar "obrigatório condicional a outro campo" só com anotação de bean validation). */
 public record FuncionarioCondominioUpdateRequest(
         FuncionarioPerfil perfil,
-        @Email(message = "email inválido") String email) {
+        @Email(message = "email inválido") String email,
+        String funcao) {
 }

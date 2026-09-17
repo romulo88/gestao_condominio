@@ -10,6 +10,7 @@ public record FuncionarioCondominioResponse(
         Integer funcionarioId,
         Integer condominioId,
         FuncionarioPerfil perfil,
+        String funcao,
         Situacao situacao,
         LocalDateTime createdAt,
         LocalDateTime updatedAt) {
@@ -20,6 +21,7 @@ public record FuncionarioCondominioResponse(
                 vinculo.getFuncionario().getId(),
                 vinculo.getCondominio().getId(),
                 vinculo.getPerfil(),
+                vinculo.getFuncao(),
                 vinculo.getSituacao(),
                 vinculo.getCreatedAt(),
                 vinculo.getUpdatedAt());

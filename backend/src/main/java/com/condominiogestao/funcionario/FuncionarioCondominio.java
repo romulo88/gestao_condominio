@@ -52,6 +52,11 @@ public class FuncionarioCondominio {
     @Column(length = 30)
     private FuncionarioPerfil perfil;
 
+    /** Texto livre pra descrever o que a pessoa faz (jardineiro, rondista, etc.) quando
+     * ela não tem {@link #perfil} - pedido do Romulo, opcional (V23). */
+    @Column(columnDefinition = "TEXT")
+    private String funcao;
+
     @Enumerated(EnumType.STRING)
     @Column(length = 30)
     private Situacao situacao = Situacao.ativo;

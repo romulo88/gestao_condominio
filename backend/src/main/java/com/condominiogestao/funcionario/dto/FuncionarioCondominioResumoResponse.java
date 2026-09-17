@@ -19,6 +19,7 @@ public record FuncionarioCondominioResumoResponse(
         String email,
         String fotoUrl,
         FuncionarioPerfil perfil,
+        String funcao,
         Situacao situacao) {
 
     public static FuncionarioCondominioResumoResponse from(FuncionarioCondominio vinculo, String fotoUrl) {
@@ -30,6 +31,7 @@ public record FuncionarioCondominioResumoResponse(
                 vinculo.getFuncionario().getEmail(),
                 fotoUrl,
                 vinculo.getPerfil(),
+                vinculo.getFuncao(),
                 vinculo.getSituacao());
     }
 }

@@ -77,13 +77,23 @@ public class DemandaAcessoSigilosoService {
                 .filter(vinculo -> vinculo.getSituacao() == Situacao.ativo
                         && vinculo.getMorador().getSituacao() == Situacao.ativo)
                 .forEach(vinculo -> candidatos.add(new CandidatoAcessoResponse(
-                        vinculo.getMorador().getCpf(), vinculo.getMorador().getNome(), "morador", formatarUnidade(vinculo))));
+                        vinculo.getMorador().getCpf(),
+                        vinculo.getMorador().getNome(),
+                        "morador",
+                        formatarUnidade(vinculo),
+                        null,
+                        null)));
 
         funcionarioCondominioRepository.findByCondominioId(condominioId).stream()
                 .filter(vinculo -> vinculo.getSituacao() == Situacao.ativo
                         && vinculo.getFuncionario().getSituacao() == Situacao.ativo)
                 .forEach(vinculo -> candidatos.add(new CandidatoAcessoResponse(
-                        vinculo.getFuncionario().getCpf(), vinculo.getFuncionario().getNome(), "funcionario", null)));
+                        vinculo.getFuncionario().getCpf(),
+                        vinculo.getFuncionario().getNome(),
+                        "funcionario",
+                        null,
+                        vinculo.getPerfil(),
+                        vinculo.getFuncao())));
 
         return candidatos.stream().sorted(Comparator.comparing(CandidatoAcessoResponse::nome)).toList();
     }

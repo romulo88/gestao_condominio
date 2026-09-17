@@ -122,6 +122,7 @@ public class FuncionarioCondominioService {
         vinculo.setFuncionario(funcionario);
         vinculo.setCondominio(condominio);
         vinculo.setPerfil(request.perfil());
+        vinculo.setFuncao(request.funcao());
 
         return FuncionarioCondominioResponse.from(repository.save(vinculo));
     }
@@ -139,6 +140,7 @@ public class FuncionarioCondominioService {
         }
 
         vinculo.setPerfil(request.perfil());
+        vinculo.setFuncao(request.funcao());
         // Email mora em Pessoa (identidade compartilhada), não no vínculo - mesmo padrão
         // já usado em MoradorCondominioService.atualizar. Só sobrescreve quando um valor
         // de verdade foi informado - em branco não apaga o e-mail que já existia (a mesma
