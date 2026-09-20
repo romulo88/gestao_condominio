@@ -159,6 +159,11 @@ public class DemandaService {
         // etapas na v136) - o morador só recebe a fatia filtrada por `visivelMorador` logo
         // em seguida, funcionário recebe a lista inteira sem filtro nenhum.
         Map<Integer, List<EtiquetaResponse>> etiquetasPorDemanda = buscarEtiquetasPorDemanda(idsDemandas);
+        // KPI de "dias parado" do Kanban (pedido do Romulo) - desde quando cada demanda está
+        // na coluna atual, em lote. Calculado sempre (custa uma query já com os ids em mãos)
+        // mesmo na listagem pessoal (`todas=false`) - é a mesma informação, sem restrição de
+        // visibilidade adicional (`statusKanbanNome` já é exposto pros dois papéis).
+        Map<Integer, LocalDateTime> statusKanbanDesdePorDemanda = buscarStatusKanbanDesdePorDemanda(idsDemandas);
 
         if (!ehFuncionario) {
             // "Acompanhar" (v116) é morador-only - só calcula em lote aqui, funcionário
@@ -179,7 +184,8 @@ public class DemandaService {
                             flagsEtapasPorDemanda.getOrDefault(d.getId(), EtapaFlags.NENHUMA).vigente(),
                             List.of(),
                             podeAcompanhar(contexto, d),
-                            idsAcompanhados.contains(d.getId())))
+                            idsAcompanhados.contains(d.getId()),
+                            statusKanbanDesdePorDemanda.get(d.getId())))
                     .toList();
         }
 
@@ -195,7 +201,8 @@ public class DemandaService {
                         flagsEtapasPorDemanda.getOrDefault(d.getId(), EtapaFlags.NENHUMA).vigente(),
                         responsaveisPorDemanda.getOrDefault(d.getId(), List.of()),
                         false,
-                        false))
+                        false,
+                        statusKanbanDesdePorDemanda.get(d.getId())))
                 .toList();
     }
 
@@ -883,6 +890,22 @@ public class DemandaService {
      * alternar sigilo/arquivar), mesmo espírito de {@link #temNotaPendente}. */
     private EtapaFlags flagsEtapas(Integer demandaId) {
         return calcularFlagsEtapas(etapaRepository.findByDemandaIdOrderByOrdem(demandaId));
+    }
+
+    /** Ids → desde quando cada demanda está na coluna ATUAL dela, em lote (pra
+     * {@code DemandaResponse.statusKanbanDesde}, KPI de "dias parado" do Kanban) - a
+     * transição mais recente do histórico É a entrada na coluna atual (ver
+     * {@link DemandaStatusKanbanHistoricoRepository#buscarUltimaTransicaoPorDemanda}).
+     * Demanda sem histórico (nunca teve coluna) simplesmente não aparece no map. */
+    private Map<Integer, LocalDateTime> buscarStatusKanbanDesdePorDemanda(List<Integer> demandaIds) {
+        if (demandaIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Integer, LocalDateTime> desde = new HashMap<>();
+        for (Object[] linha : historicoRepository.buscarUltimaTransicaoPorDemanda(demandaIds)) {
+            desde.put((Integer) linha[0], (LocalDateTime) linha[1]);
+        }
+        return desde;
     }
 
     /** Vencida = tem prazo marcado, o prazo já passou (antes de hoje) e ainda não foi

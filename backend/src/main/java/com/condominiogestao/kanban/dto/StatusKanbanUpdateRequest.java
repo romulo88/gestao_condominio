@@ -8,5 +8,7 @@ public record StatusKanbanUpdateRequest(
         /** Null (campo omitido) não mexe no valor atual - mesmo critério de {@code ordem}. */
         Boolean visivelExternamente,
         /** Null (campo omitido) não mexe no valor atual - mesmo critério de {@code ordem}. */
-        Boolean finalistico) {
+        Boolean finalistico,
+        /** Null (campo omitido) não mexe no valor atual - mesmo critério de {@code ordem}. */
+        Boolean recorrente) {
 }

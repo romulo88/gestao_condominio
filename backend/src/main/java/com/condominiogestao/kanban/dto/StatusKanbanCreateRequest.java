@@ -10,5 +10,7 @@ public record StatusKanbanCreateRequest(
         /** Null (campo omitido) vira true - mesmo default do banco (V7). */
         Boolean visivelExternamente,
         /** Null (campo omitido) vira false - mesmo default do banco (V9). */
-        Boolean finalistico) {
+        Boolean finalistico,
+        /** Null (campo omitido) vira false - mesmo default do banco (V25). */
+        Boolean recorrente) {
 }

@@ -57,6 +57,13 @@ public class StatusKanban {
     @Column(name = "finalistico", nullable = false)
     private boolean finalistico = false;
 
+    /** Pedido do Romulo: coluna de demandas recorrentes/diárias (ex: "Limpeza",
+     * "Portaria", "Ronda") - os cards nela ficam ali indefinidamente, então não devem
+     * contar no futuro dashboard de tempo parado, assim como os de coluna finalística.
+     * Default false. */
+    @Column(name = "recorrente", nullable = false)
+    private boolean recorrente = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

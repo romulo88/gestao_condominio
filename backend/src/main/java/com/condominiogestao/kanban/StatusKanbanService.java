@@ -76,6 +76,7 @@ public class StatusKanbanService {
         statusKanban.setOrdem(request.ordem() != null ? request.ordem() : 0);
         statusKanban.setVisivelExternamente(request.visivelExternamente() == null || request.visivelExternamente());
         statusKanban.setFinalistico(request.finalistico() != null && request.finalistico());
+        statusKanban.setRecorrente(request.recorrente() != null && request.recorrente());
 
         return StatusKanbanResponse.from(repository.save(statusKanban));
     }
@@ -99,6 +100,9 @@ public class StatusKanbanService {
         }
         if (request.finalistico() != null) {
             statusKanban.setFinalistico(request.finalistico());
+        }
+        if (request.recorrente() != null) {
+            statusKanban.setRecorrente(request.recorrente());
         }
 
         return StatusKanbanResponse.from(repository.save(statusKanban));

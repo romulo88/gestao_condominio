@@ -83,6 +83,12 @@ public record DemandaResponse(
          * do Kanban. Sempre false pra funcionário (a funcionalidade é morador-only) e pra
          * demanda que o próprio morador abriu (não tem sentido acompanhar a própria). */
         boolean acompanhando,
+        /** Desde quando a demanda está na coluna ATUAL dela (a transição mais recente do
+         * histórico) - alimenta o KPI de "dias parado" do Kanban (raia finalística/recorrente
+         * não entra nessa contagem, ver {@code StatusKanban.finalistico}/{@code recorrente}).
+         * Null enquanto a demanda não tem coluna (statusKanbanId também null), ou nos
+         * endpoints que não calculam isso em lote (ver overload sem esse parâmetro). */
+        LocalDateTime statusKanbanDesde,
         LocalDateTime createdAt,
         LocalDateTime updatedAt) {
 
@@ -90,6 +96,34 @@ public record DemandaResponse(
      * consulta à toa. Também não pode estar sendo acompanhada ainda (acabou de nascer). */
     public static DemandaResponse from(Demanda demanda, boolean podeGerenciarSigilo) {
         return from(demanda, List.of(), podeGerenciarSigilo, false, false, false, false, List.of(), false, false);
+    }
+
+    /** Overload sem {@code statusKanbanDesde} - usado pelos endpoints que devolvem uma
+     * demanda isolada (criar/aprovar/mover/etc.) e por {@code listarPagina}, onde esse
+     * cálculo em lote não foi pedido (KPI é só do Kanban, ver {@link #listar}). */
+    public static DemandaResponse from(
+            Demanda demanda,
+            List<EtiquetaResponse> etiquetas,
+            boolean podeGerenciarSigilo,
+            boolean temAnexos,
+            boolean temNotaPendente,
+            boolean temEtapaVencida,
+            boolean temEtapaVigente,
+            List<ResponsavelResumoResponse> responsaveis,
+            boolean podeAcompanhar,
+            boolean acompanhando) {
+        return from(
+                demanda,
+                etiquetas,
+                podeGerenciarSigilo,
+                temAnexos,
+                temNotaPendente,
+                temEtapaVencida,
+                temEtapaVigente,
+                responsaveis,
+                podeAcompanhar,
+                acompanhando,
+                null);
     }
 
     public static DemandaResponse from(
@@ -102,7 +136,8 @@ public record DemandaResponse(
             boolean temEtapaVigente,
             List<ResponsavelResumoResponse> responsaveis,
             boolean podeAcompanhar,
-            boolean acompanhando) {
+            boolean acompanhando,
+            LocalDateTime statusKanbanDesde) {
         boolean solicitanteMorador = demanda.getMoradorSolicitante() != null;
         String nomeSolicitante = solicitanteMorador
                 ? demanda.getMoradorSolicitante().getNome()
@@ -134,6 +169,7 @@ public record DemandaResponse(
                 responsaveis,
                 podeAcompanhar,
                 acompanhando,
+                statusKanbanDesde,
                 demanda.getCreatedAt(),
                 demanda.getUpdatedAt());
     }

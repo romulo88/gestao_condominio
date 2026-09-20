@@ -3,11 +3,21 @@ package com.condominiogestao.demanda;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface DemandaStatusKanbanHistoricoRepository
         extends JpaRepository<DemandaStatusKanbanHistorico, Integer> {
 
     List<DemandaStatusKanbanHistorico> findByDemandaIdOrderByCreatedAt(Integer demandaId);
+
+    /** Desde quando cada demanda (dentre as informadas) está na coluna ATUAL dela - a
+     * transição mais recente do histórico É a entrada na coluna atual. Usada em lote pelo
+     * KPI de "dias parado" do Kanban ({@code DemandaService.buscarStatusKanbanDesdePorDemanda}),
+     * sem N+1: uma linha por demanda (`MAX(createdAt)` agrupado), não o histórico inteiro. */
+    @Query("SELECT h.demanda.id, MAX(h.createdAt) FROM DemandaStatusKanbanHistorico h "
+            + "WHERE h.demanda.id IN :demandaIds GROUP BY h.demanda.id")
+    List<Object[]> buscarUltimaTransicaoPorDemanda(@Param("demandaIds") List<Integer> demandaIds);
 
     /** Movimentações de coluna das demandas do morador depois de uma data - alerta de
      * mudança de status (pedido do Romulo). */
