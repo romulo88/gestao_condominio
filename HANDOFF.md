@@ -6,6 +6,13 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v167)
+
+- **Renomeações "Kanban" → "Visão" (v167, pedido do Romulo)** - o menu de navegação já mostrava "Visão" há tempos, mas alguns lugares ainda vazavam o nome antigo. Só frontend, texto/label, **confirmado ao vivo**:
+  - Título da própria tela (`kanban/page.tsx`): "Kanban — {condomínio}" virou "Visão — {condomínio}" (só aparece quando o condomínio não tem GIF configurado - Padang Beach tem GIF hoje, testei trocando pra Riviera pra ver o título de texto).
+  - Tooltip do link "Visão" no menu (`app-shell.tsx`) - o `title` do link (texto do label já era "Visão" desde antes) ainda dizia "Kanban" no atributo `title` (hover); agora os dois são "Visão".
+  - Em `/demandas`: o link "Aprovar com Kanban" virou "Aprovar e enviar para Visão", e o título do formulário que abre ao clicar ("Aprovar e enviar para o Kanban") virou "Aprovar e enviar para Visão" (mesmo texto exato do link, por consistência). Esse fluxo só existe em `/demandas` - não tinha equivalente dentro do próprio Kanban/Visão.
+
 ## Estado atual (v166)
 
 - **Copiar "#N - Título" da demanda (v166, pedido do Romulo)** - só frontend, no modal de detalhe do Kanban: ícone novo (`IconeCopiar`, dois retângulos sobrepostos) ao lado do título, copia `#<id> - <título>` pra área de transferência com um clique - ideia é facilitar colar em outro lugar (mandar pra alguém, ou criar um lembrete sobre aquela demanda). `handleCopiarTitulo` usa `navigator.clipboard.writeText` + feedback "Copiado!" por 2s, mesmo padrão já usado em `handleCopiarLinkPublico` (link público do Kanban, `condominios/page.tsx`).
