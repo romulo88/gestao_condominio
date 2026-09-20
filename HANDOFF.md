@@ -6,6 +6,12 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v168)
+
+- **Ajustes finos de texto em `/demandas` (v168, pedido do Romulo)** - só frontend, **confirmado ao vivo**:
+  - Painel "Aprovar de imediato": texto mudou de "(sem Kanban)" pra "(sem o quadro Visão)" - mesma renomeação Kanban→Visão da v167, só que faltou esse trecho.
+  - O link/painel "Aprovar e enviar para Visão" (v167) ficou só "Aprovar para Visão" (link, título do painel e botão de submit, os três juntos) - depois o Romulo pediu pra voltar SÓ o texto do botão de submit pro original "Aprovar" (como era antes de toda a renomeação v167), mantendo o link e o título do painel como "Aprovar para Visão". Ou seja: hoje o link diz "Aprovar para Visão", o painel abre com título "Aprovar para Visão", mas o botão dentro dele volta a dizer simplesmente "Aprovar".
+
 ## Estado atual (v167)
 
 - **Renomeações "Kanban" → "Visão" (v167, pedido do Romulo)** - o menu de navegação já mostrava "Visão" há tempos, mas alguns lugares ainda vazavam o nome antigo. Só frontend, texto/label, **confirmado ao vivo**:
