@@ -23,6 +23,8 @@ import com.condominiogestao.kanban.StatusKanban;
 import com.condominiogestao.kanban.StatusKanbanRepository;
 import com.condominiogestao.morador.Morador;
 import com.condominiogestao.morador.MoradorRepository;
+import com.condominiogestao.notificacao.EmailService;
+import com.condominiogestao.notificacao.EmailTemplates;
 import com.condominiogestao.pessoa.PessoaFotoService;
 import com.condominiogestao.security.ContextoAutenticado;
 import java.time.LocalDate;
@@ -72,6 +74,7 @@ public class DemandaService {
     private final DemandaAcompanhamentoRepository acompanhamentoRepository;
     private final DemandaEtapaRepository etapaRepository;
     private final PessoaFotoService pessoaFotoService;
+    private final EmailService emailService;
 
     public DemandaService(
             DemandaRepository repository,
@@ -87,7 +90,8 @@ public class DemandaService {
             DemandaNotaRepository notaRepository,
             DemandaAcompanhamentoRepository acompanhamentoRepository,
             DemandaEtapaRepository etapaRepository,
-            PessoaFotoService pessoaFotoService) {
+            PessoaFotoService pessoaFotoService,
+            EmailService emailService) {
         this.repository = repository;
         this.condominioRepository = condominioRepository;
         this.funcionarioRepository = funcionarioRepository;
@@ -102,6 +106,52 @@ public class DemandaService {
         this.acompanhamentoRepository = acompanhamentoRepository;
         this.etapaRepository = etapaRepository;
         this.pessoaFotoService = pessoaFotoService;
+        this.emailService = emailService;
+    }
+
+    /** Pedido do Romulo: avisar por e-mail quando a demanda é aprovada/reprovada - só
+     * quando o SOLICITANTE é morador (funcionário não recebe, ele mesmo é quem decide).
+     * Chamada depois de {@code repository.save} em {@link #aprovar}/{@link #reprovar}, nos
+     * TRÊS desfechos possíveis - {@code raiaNome} e {@code respostaFuncionario} são
+     * mutuamente exclusivos (cada chamador passa só um dos dois, o outro null): aprovada
+     * COM coluna manda a raia; aprovada SEM coluna ("de imediato") e reprovada mandam a
+     * justificativa do funcionário (ver {@link EmailTemplates#demandaDecisao}). Best-effort
+     * - ver {@link EmailService#enviar}. */
+    private void notificarDecisaoDemanda(Demanda demanda, String raiaNome, String respostaFuncionario) {
+        Morador solicitante = demanda.getMoradorSolicitante();
+        if (solicitante == null || solicitante.getEmail() == null || solicitante.getEmail().isBlank()) {
+            return;
+        }
+        boolean aprovada = demanda.getStatusAprovacao() == DemandaStatusAprovacao.aprovada;
+        String assunto = "Demanda #" + demanda.getId() + " - " + (aprovada ? "Aprovada" : "Reprovada");
+        EmailTemplates.CorpoEmail corpo = EmailTemplates.demandaDecisao(
+                demanda.getId(),
+                demanda.getTitulo(),
+                demanda.getDescricao(),
+                aprovada,
+                demanda.getCondominio().getNome(),
+                raiaNome,
+                respostaFuncionario);
+        emailService.enviar(solicitante.getEmail(), assunto, corpo);
+    }
+
+    /** Pedido do Romulo: aviso ADICIONAL por e-mail quando a demanda entra numa coluna
+     * finalística ({@code StatusKanban.finalistico}) - além do (nunca no lugar do) e-mail
+     * de aprovação/reprovação. Chamada em {@link #aprovar} (coluna escolhida já nasce
+     * finalística) e em {@link #moverKanban} (card arrastado pra uma). Mesma checagem de
+     * "só morador com e-mail" de {@link #notificarDecisaoDemanda} - best-effort. */
+    private void notificarFinalizacao(Demanda demanda) {
+        Morador solicitante = demanda.getMoradorSolicitante();
+        if (solicitante == null || solicitante.getEmail() == null || solicitante.getEmail().isBlank()) {
+            return;
+        }
+        EmailTemplates.CorpoEmail corpo = EmailTemplates.demandaFinalizada(
+                demanda.getId(),
+                demanda.getTitulo(),
+                demanda.getDescricao(),
+                demanda.getCondominio().getNome(),
+                demanda.getStatusKanban().getNome());
+        emailService.enviar(solicitante.getEmail(), "Demanda #" + demanda.getId() + " - Finalizada", corpo);
     }
 
     /** Sobrecarga sem {@code todas} - comportamento de sempre (`/demandas`, acompanhamento
@@ -396,6 +446,7 @@ public class DemandaService {
             }
             demanda.setJustificativaAprovacao(request.justificativa());
             Demanda salva = repository.save(demanda);
+            notificarDecisaoDemanda(salva, null, salva.getJustificativaAprovacao());
             EtapaFlags flagsEtapas = flagsEtapas(salva.getId());
             return DemandaResponse.from(
                     salva,
@@ -425,6 +476,10 @@ public class DemandaService {
         historico.setStatusNovo(statusKanban);
         historico.setFuncionario(funcionario);
         historicoRepository.save(historico);
+        notificarDecisaoDemanda(salva, statusKanban.getNome(), null);
+        if (statusKanban.isFinalistico()) {
+            notificarFinalizacao(salva);
+        }
 
         EtapaFlags flagsEtapas = flagsEtapas(salva.getId());
         return DemandaResponse.from(
@@ -456,6 +511,7 @@ public class DemandaService {
         demanda.setDataAprovacao(LocalDateTime.now());
 
         Demanda salva = repository.save(demanda);
+        notificarDecisaoDemanda(salva, null, salva.getJustificativaReprovacao());
         EtapaFlags flagsEtapas = flagsEtapas(salva.getId());
         return DemandaResponse.from(
                 salva,
@@ -519,6 +575,9 @@ public class DemandaService {
         historico.setStatusNovo(novaColuna);
         historico.setFuncionario(funcionario);
         historicoRepository.save(historico);
+        if (novaColuna.isFinalistico()) {
+            notificarFinalizacao(salva);
+        }
 
         EtapaFlags flagsEtapas = flagsEtapas(salva.getId());
         return DemandaResponse.from(

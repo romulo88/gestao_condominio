@@ -35,6 +35,29 @@ spring:
       max-file-size: 50MB
       max-request-size: 55MB
 
+  # SMTP pra notificação por e-mail (pedido do Romulo: avisar o morador quando a demanda
+  # dele é aprovada/reprovada) - credenciais da caixa de e-mail da VPS, via variável de
+  # ambiente (mesmo padrão de JWT_SECRET/MINIO_* acima). Em dev local, sem essas variáveis,
+  # `EmailService` detecta host vazio e só loga um aviso - nunca impede a aprovação em si.
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          # Timeout curto de propósito: sem isso, um SMTP inalcançável (porta bloqueada,
+          # host errado) trava a conexão indefinidamente - e como o envio acontece dentro
+          # da mesma transação da aprovação/reprovação (EmailService.enviar), isso travaria
+          # a resposta da API também, quebrando a promessa de "nunca impede a ação".
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
 server:
   port: 8080
 
@@ -67,3 +90,9 @@ storage:
   access-key: ${MINIO_ACCESS_KEY:condominio}
   secret-key: ${MINIO_SECRET_KEY:condominio123}
   bucket: ${MINIO_BUCKET:condominio-gestao}
+
+# Remetente do e-mail de notificação (ver EmailService) - opcional, muitos provedores de
+# SMTP exigem que o "From" seja igual ao usuário autenticado, então sem essa variável cai
+# no próprio MAIL_USERNAME.
+notificacao:
+  email-remetente: ${MAIL_FROM:}
