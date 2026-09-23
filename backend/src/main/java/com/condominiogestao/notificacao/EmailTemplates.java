@@ -237,6 +237,80 @@ public final class EmailTemplates {
         return new CorpoEmail(texto, html);
     }
 
+    /** Pedido do Romulo: aviso de cadastro novo (funcionário/morador) - explica que a
+     * conta foi criada e o que fazer pra acessar. <b>Não manda nenhum código</b> - ver
+     * {@link #senhaResetada}/{@link #semCodigo} pro motivo. */
+    public static CorpoEmail contaCriada(String cpf, String email) {
+        return semCodigo("Conta criada", "Sua conta no Commander foi criada.", cpf, email);
+    }
+
+    /** Pedido do Romulo: aviso do botão "Zerar senha" (síndico/sub-síndico/administrador
+     * resetando a senha de alguém que esqueceu). Mesmo motivo de {@link #contaCriada} pra
+     * não mandar código - ver {@link #semCodigo}. */
+    public static CorpoEmail senhaResetada(String cpf, String email) {
+        return semCodigo(
+                "Senha resetada", "Sua senha foi resetada por um administrador do seu condomínio.", cpf, email);
+    }
+
+    /** Base de {@link #contaCriada}/{@link #senhaResetada} - avisa que a pessoa precisa
+     * definir uma senha, mas <b>não manda um código aqui</b> de propósito: cadastro novo e
+     * "Zerar senha" ligam {@code precisaTrocarSenha}, e a ÚNICA porta de entrada enquanto
+     * essa flag estiver ligada é "Esqueci minha senha" ({@code AuthService.esqueciSenha}) -
+     * que gera um código NOVO a cada chamada, invalidando qualquer código anterior. Mandar
+     * um código aqui também seria enviar um código morto: a pessoa nunca consegue usá-lo
+     * direto (o login já bloqueia antes de checar a senha), então ela SEMPRE vai precisar
+     * passar por "Esqueci minha senha" de qualquer jeito - e aí o código de lá que vale, não
+     * este. Por isso este e-mail só orienta a pessoa a ir direto pra "Esqueci minha senha". */
+    private static CorpoEmail semCodigo(String titulo, String introducao, String cpf, String email) {
+        String corDestaque = "#2563eb";
+
+        List<String[]> linhas = new ArrayList<>();
+        linhas.add(new String[] {"CPF", HtmlUtils.htmlEscape(cpf)});
+        linhas.add(new String[] {"E-mail", HtmlUtils.htmlEscape(email)});
+
+        StringBuilder tabelaHtml = new StringBuilder();
+        for (int i = 0; i < linhas.size(); i++) {
+            tabelaHtml.append(linha(linhas.get(i)[0], linhas.get(i)[1], i < linhas.size() - 1));
+        }
+
+        String instrucao = "Pra acessar, vá na tela de login e clique em \"Esqueceu sua senha?\". Informe o "
+                + "CPF e o e-mail acima - você vai receber um código por e-mail pra definir sua senha.";
+
+        String texto = "Este é um e-mail informativo - não é necessário respondê-lo.\n\n"
+                + introducao + "\n\n"
+                + "CPF: " + cpf + "\n"
+                + "E-mail: " + email + "\n\n"
+                + instrucao + "\n";
+
+        String html = "<!DOCTYPE html>"
+                + "<html lang=\"pt-BR\"><body style=\"margin:0;padding:0;background-color:#f1f5f9;"
+                + "font-family:Arial,Helvetica,sans-serif;\">"
+                + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+                + "style=\"background-color:#f1f5f9;padding:24px 0;\"><tr><td align=\"center\">"
+                + "<table role=\"presentation\" width=\"480\" cellpadding=\"0\" cellspacing=\"0\" "
+                + "style=\"background-color:#ffffff;border-radius:8px;overflow:hidden;\">"
+                + logoCommander()
+                + "<tr><td style=\"background-color:" + corDestaque + ";padding:16px 24px;\">"
+                + "<span style=\"color:#ffffff;font-size:13px;font-weight:bold;letter-spacing:0.5px;"
+                + "text-transform:uppercase;\">" + titulo + "</span></td></tr>"
+                + "<tr><td style=\"padding:24px;\">"
+                + "<p style=\"margin:0 0 16px;color:#334155;font-size:14px;line-height:1.5;\">" + introducao
+                + "</p>"
+                + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+                + "style=\"border-collapse:collapse;\">"
+                + tabelaHtml
+                + "</table>"
+                + "<p style=\"margin:20px 0 0;color:#334155;font-size:14px;line-height:1.6;\">" + instrucao
+                + "</p>"
+                + "</td></tr>"
+                + "<tr><td style=\"padding:16px 24px;background-color:#f8fafc;border-top:1px solid #e2e8f0;\">"
+                + "<p style=\"margin:0;color:#94a3b8;font-size:12px;\">Este é um e-mail informativo - não é "
+                + "necessário respondê-lo.</p></td></tr>"
+                + "</table></td></tr></table></body></html>";
+
+        return new CorpoEmail(texto, html);
+    }
+
     /** "Commander" numa barra escura em degradê azul (mesmo estilo de
      * {@code AuthLayout}/{@code BrandMark} no frontend: slate-950 → slate-900 → blue-900).
      * `background-image` com gradiente pra quem suporta, `background-color` de fallback pra

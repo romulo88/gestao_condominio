@@ -6,6 +6,14 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v175)
+
+- **Corrigido: o código do cadastro novo/"Zerar senha" nunca era utilizável (v175, achado do Romulo)** - a v174 mandava um código por e-mail nesses dois casos, igual ao "Esqueci minha senha", mas esse código nunca podia ser usado de verdade: o login bloqueia SEMPRE que `precisaTrocarSenha=true` (não importa a senha digitada), então a única porta de entrada é o próprio "Esqueci minha senha" - que gera um código NOVO a cada chamada, invalidando o anterior. Resultado: a pessoa recebia dois e-mails (cadastro/reset + o de "esqueci senha" que ela era forçada a disparar de qualquer jeito), e só o segundo código funcionava.
+  - **`SenhaProvisoriaService`**: `gerarEEnviar` virou `gerarEEnviarCodigo` (só usado por `AuthService.esqueciSenha` - o único caminho que precisa mesmo dar um código usável). Dois métodos novos, **sem mandar código nenhum**: `prepararPrimeiroAcesso` (cadastro novo) e `resetarEAvisar` ("Zerar senha") - só religam `precisaTrocarSenha` (com uma senha descartável, nunca usada direto) e mandam um e-mail avisando a pessoa a ir em "Esqueci minha senha" pra receber o código de verdade.
+  - **Dois templates novos em `EmailTemplates`**: `contaCriada` ("Conta criada") e `senhaResetada` ("Senha resetada") - mesmo padrão visual (marca Commander, tabela CPF/e-mail), barra azul, SEM caixa de código, com a instrução "vá em Esqueceu sua senha? e informe CPF+e-mail pra receber o código".
+  - **Frontend**: `window.alert(...)` do botão "Zerar senha" (`condominios/page.tsx`) e comentários em `api.ts` corrigidos - não falam mais em "código" enviado ali, e sim em "e-mail avisando" + instrução de ir em "Esqueceu sua senha?".
+  - **Não testado ao vivo ainda** - precisa reiniciar o backend (`SenhaProvisoriaService` mudou de forma). Compile do backend, lint e build do frontend já passaram limpos.
+
 ## Estado atual (v174)
 
 - **Senha provisória por e-mail estendida pra cadastro novo e "Zerar senha" (v174, pedido do Romulo)** - fecha o restante do escopo deixado pra depois na v172 ("cadastro novo") e uma brecha equivalente que o botão "Zerar senha" tinha (resetava pra senha padrão pública `Trocar@123`, a mesma coisa que "esqueci senha" fazia antes de virar código por e-mail - qualquer um que soubesse CPF+e-mail da vítima e clicasse "zerar senha" nela conseguiria completar o `trocarSenha` sem nunca precisar ver o e-mail de verdade).

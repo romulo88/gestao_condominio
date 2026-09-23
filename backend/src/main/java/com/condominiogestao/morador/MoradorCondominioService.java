@@ -185,7 +185,7 @@ public class MoradorCondominioService {
         MoradorCondominio vinculo = buscarEntidadePorId(id);
         Autorizacao.exigirAdministradorOuGestor(contexto, vinculo.getCondominio().getId());
 
-        senhaProvisoriaService.gerarEEnviar(vinculo.getMorador().getPessoa());
+        senhaProvisoriaService.resetarEAvisar(vinculo.getMorador().getPessoa());
 
         return MoradorCondominioResponse.from(vinculo);
     }

@@ -192,7 +192,7 @@ public class FuncionarioCondominioService {
         FuncionarioCondominio vinculo = buscarEntidadePorId(id);
         Autorizacao.exigirAdministradorOuGestor(contexto, vinculo.getCondominio().getId());
 
-        senhaProvisoriaService.gerarEEnviar(vinculo.getFuncionario().getPessoa());
+        senhaProvisoriaService.resetarEAvisar(vinculo.getFuncionario().getPessoa());
 
         return FuncionarioCondominioResponse.from(vinculo);
     }

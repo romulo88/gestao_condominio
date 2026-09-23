@@ -96,7 +96,7 @@ public class FuncionarioService {
             // nascer com a senha padrão pública - mesmo mecanismo de "Esqueci minha senha"
             // (ver SenhaProvisoriaService). Só se aplica a Pessoa GENUINAMENTE nova - quem
             // já existe (reaproveitada abaixo) já tem senha própria, não é tocada aqui.
-            senhaProvisoriaService.gerarEEnviar(nova);
+            senhaProvisoriaService.prepararPrimeiroAcesso(nova);
             return pessoaRepository.save(nova);
         });
 

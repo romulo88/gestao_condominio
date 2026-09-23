@@ -177,7 +177,7 @@ public class AuthService {
     @Transactional
     public void esqueciSenha(EsqueciSenhaRequest request) {
         Pessoa pessoa = buscarPessoaPorCpfEEmail(request.cpf(), request.email());
-        senhaProvisoriaService.gerarEEnviar(pessoa);
+        senhaProvisoriaService.gerarEEnviarCodigo(pessoa);
         pessoaRepository.save(pessoa);
     }
 
