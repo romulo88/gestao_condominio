@@ -11,6 +11,11 @@ import org.springframework.web.util.HtmlUtils;
  */
 public final class EmailTemplates {
 
+    /** Pedido do Romulo: link direto pra tela de login nos e-mails de senha (trocar/
+     * criar conta/resetar) - clica e já cai lá, sem precisar digitar o endereço. Inclui o
+     * `basePath` de produção (`/commander`, ver `next.config.ts`/workflow do frontend). */
+    private static final String URL_LOGIN = "https://romtechsolucoes.com.br/commander/login";
+
     private EmailTemplates() {
     }
 
@@ -206,7 +211,8 @@ public final class EmailTemplates {
                 + "Use o código acima como sua senha atual na tela de login, em \"Esqueceu sua senha?\", "
                 + "informando de novo o CPF e o e-mail acima - em seguida, escolha sua senha nova. Se "
                 + "você não pediu essa troca, sua senha foi alterada mesmo assim - avise a administração "
-                + "do seu condomínio o quanto antes.\n";
+                + "do seu condomínio o quanto antes.\n\n"
+                + "Acesse o sistema em: " + URL_LOGIN + "\n";
 
         String html = "<!DOCTYPE html>"
                 + "<html lang=\"pt-BR\"><body style=\"margin:0;padding:0;background-color:#f1f5f9;"
@@ -228,6 +234,7 @@ public final class EmailTemplates {
                 + "</table>"
                 + codigoHtml
                 + instrucoesHtml
+                + botaoLogin()
                 + "</td></tr>"
                 + "<tr><td style=\"padding:16px 24px;background-color:#f8fafc;border-top:1px solid #e2e8f0;\">"
                 + "<p style=\"margin:0;color:#94a3b8;font-size:12px;\">Este é um e-mail informativo - não é "
@@ -280,7 +287,8 @@ public final class EmailTemplates {
                 + introducao + "\n\n"
                 + "CPF: " + cpf + "\n"
                 + "E-mail: " + email + "\n\n"
-                + instrucao + "\n";
+                + instrucao + "\n\n"
+                + "Acesse o sistema em: " + URL_LOGIN + "\n";
 
         String html = "<!DOCTYPE html>"
                 + "<html lang=\"pt-BR\"><body style=\"margin:0;padding:0;background-color:#f1f5f9;"
@@ -302,6 +310,7 @@ public final class EmailTemplates {
                 + "</table>"
                 + "<p style=\"margin:20px 0 0;color:#334155;font-size:14px;line-height:1.6;\">" + instrucao
                 + "</p>"
+                + botaoLogin()
                 + "</td></tr>"
                 + "<tr><td style=\"padding:16px 24px;background-color:#f8fafc;border-top:1px solid #e2e8f0;\">"
                 + "<p style=\"margin:0;color:#94a3b8;font-size:12px;\">Este é um e-mail informativo - não é "
@@ -324,6 +333,16 @@ public final class EmailTemplates {
                 + "padding:18px 24px;text-align:center;\">"
                 + "<span style=\"color:#ffffff;font-size:16px;font-weight:bold;letter-spacing:0.3px;\">"
                 + "Commander</span></td></tr>";
+    }
+
+    /** Botão "Ir para o login" (pedido do Romulo) - mesmo azul de destaque dos e-mails de
+     * senha, centralizado. `URL_LOGIN` já é absoluta (inclui domínio e `/commander`), então
+     * funciona igual em qualquer cliente de e-mail, sem depender de onde o e-mail foi aberto. */
+    private static String botaoLogin() {
+        return "<div style=\"margin:20px 0;text-align:center;\">"
+                + "<a href=\"" + URL_LOGIN + "\" style=\"display:inline-block;padding:10px 28px;"
+                + "background-color:#0f172a;color:#ffffff;font-size:14px;font-weight:bold;"
+                + "text-decoration:none;border-radius:8px;\">Ir para o login</a></div>";
     }
 
     private static String linha(String rotulo, String valor, boolean borda) {

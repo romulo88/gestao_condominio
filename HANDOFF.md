@@ -6,6 +6,11 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v176)
+
+- **Botão "Ir para o login" nos e-mails de senha (v176, pedido do Romulo)** - `EmailTemplates` ganhou `URL_LOGIN` (`https://romtechsolucoes.com.br/commander/login`, já inclui o `basePath` `/commander` de produção) e `botaoLogin()` (link estilizado, azul-marinho, centralizado) - aplicado em `trocarSenha` (e-mail com código) e em `semCodigo` (base de `contaCriada`/`senhaResetada`), então os três e-mails de senha agora levam direto pra tela de login com um clique. Fallback em texto puro ganhou a linha "Acesse o sistema em: ...".
+  - **Não testado ao vivo ainda** - precisa reiniciar o backend (`EmailTemplates` mudou de forma). Compile já passou limpo; confirmei manualmente que a URL abre a tela de login em produção.
+
 ## Estado atual (v175)
 
 - **Corrigido: o código do cadastro novo/"Zerar senha" nunca era utilizável (v175, achado do Romulo)** - a v174 mandava um código por e-mail nesses dois casos, igual ao "Esqueci minha senha", mas esse código nunca podia ser usado de verdade: o login bloqueia SEMPRE que `precisaTrocarSenha=true` (não importa a senha digitada), então a única porta de entrada é o próprio "Esqueci minha senha" - que gera um código NOVO a cada chamada, invalidando o anterior. Resultado: a pessoa recebia dois e-mails (cadastro/reset + o de "esqueci senha" que ela era forçada a disparar de qualquer jeito), e só o segundo código funcionava.
