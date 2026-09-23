@@ -1,12 +1,12 @@
 package com.condominiogestao.auth;
 
 import com.condominiogestao.auth.dto.ContextoDto;
+import com.condominiogestao.auth.dto.EsqueciSenhaRequest;
 import com.condominiogestao.auth.dto.LoginRequest;
 import com.condominiogestao.auth.dto.LoginResponse;
 import com.condominiogestao.auth.dto.SelecionarContextoRequest;
 import com.condominiogestao.auth.dto.TokenResponse;
 import com.condominiogestao.auth.dto.TrocarSenhaRequest;
-import com.condominiogestao.auth.dto.VerificarIdentidadeRequest;
 import com.condominiogestao.administrador.AdministradorRepository;
 import com.condominiogestao.common.Cpf;
 import com.condominiogestao.common.InvalidRequestException;
@@ -18,6 +18,7 @@ import com.condominiogestao.funcionario.FuncionarioCondominioRepository;
 import com.condominiogestao.funcionario.FuncionarioRepository;
 import com.condominiogestao.morador.MoradorCondominioRepository;
 import com.condominiogestao.morador.MoradorRepository;
+import com.condominiogestao.notificacao.SenhaProvisoriaService;
 import com.condominiogestao.pessoa.Pessoa;
 import com.condominiogestao.pessoa.PessoaRepository;
 import com.condominiogestao.security.ContextoAutenticado;
@@ -45,6 +46,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final String senhaPadrao;
+    private final SenhaProvisoriaService senhaProvisoriaService;
 
     public AuthService(
             PessoaRepository pessoaRepository,
@@ -55,7 +57,8 @@ public class AuthService {
             AdministradorRepository administradorRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            @Value("${auth.senha-padrao}") String senhaPadrao) {
+            @Value("${auth.senha-padrao}") String senhaPadrao,
+            SenhaProvisoriaService senhaProvisoriaService) {
         this.pessoaRepository = pessoaRepository;
         this.funcionarioRepository = funcionarioRepository;
         this.funcionarioCondominioRepository = funcionarioCondominioRepository;
@@ -65,6 +68,7 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.senhaPadrao = senhaPadrao;
+        this.senhaProvisoriaService = senhaProvisoriaService;
     }
 
     @Transactional
@@ -152,18 +156,29 @@ public class AuthService {
     }
 
     /**
-     * Passo 1 do fluxo "Esqueci minha senha" (ver {@code login/page.tsx}): só confirma
-     * que existe uma {@link Pessoa} com esse CPF <b>e</b> esse e-mail (não diz qual dos
+     * Passo 1 do fluxo "Esqueci minha senha" (ver {@code login/page.tsx}): confirma que
+     * existe uma {@link Pessoa} com esse CPF <b>e</b> esse e-mail juntos (não diz qual dos
      * dois está errado, se algum estiver - reduz a chance de alguém usar isso pra
-     * descobrir se um CPF existe no sistema). E-mail comparado sem diferenciar
-     * maiúsculas/minúsculas.
+     * descobrir se um CPF existe no sistema), e delega a {@link SenhaProvisoriaService}
+     * (pedido do Romulo: "mandar pro e-mail um número randômico como senha provisória") -
+     * gera o código, grava como a senha da pessoa, religa {@code precisaTrocarSenha} e
+     * manda por e-mail. O passo 2 ({@link #trocarSenha}) usa esse código como "senha
+     * atual". E-mail comparado sem diferenciar maiúsculas/minúsculas.
      *
-     * <p><b>Aviso de segurança</b>: CPF + e-mail digitados aqui não é prova real de
-     * posse do e-mail (não tem link único enviado por e-mail ainda, ver
-     * docs/modelo-dados.md) - é mais forte que só CPF, mas ainda não é definitivo.
+     * <p><b>Efeito colateral que vale conhecer</b>: como o código já substitui a senha na
+     * hora (não é um token separado guardado à parte), a senha de verdade da pessoa muda
+     * já nesse passo - se alguém mais souber o CPF+e-mail de outra pessoa e chamar isso
+     * sem ela ter pedido, a senha dela É alterada mesmo assim (fica sem acesso até
+     * descobrir e usar o código do e-mail). Mais forte que a versão anterior (que só
+     * confirmava identidade e deixava a pessoa trocar usando a senha padrão, conhecida por
+     * qualquer um), mas ainda não é o ideal (um token de reset separado, sem tocar na senha
+     * real até a troca de fato, evitaria esse efeito colateral) - ver docs/modelo-dados.md.
      */
-    public void verificarIdentidade(VerificarIdentidadeRequest request) {
-        buscarPessoaPorCpfEEmail(request.cpf(), request.email());
+    @Transactional
+    public void esqueciSenha(EsqueciSenhaRequest request) {
+        Pessoa pessoa = buscarPessoaPorCpfEEmail(request.cpf(), request.email());
+        senhaProvisoriaService.gerarEEnviar(pessoa);
+        pessoaRepository.save(pessoa);
     }
 
     /**

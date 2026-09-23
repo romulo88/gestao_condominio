@@ -82,4 +82,26 @@ public final class Autorizacao {
             throw new ForbiddenException("Só administrador pode fazer isso");
         }
     }
+
+    /** Trava de segurança (pedido do Romulo): uma vez que a Pessoa já tem e-mail
+     * cadastrado, só administrador pode MUDAR pra outro - síndico/sub-síndico (que também
+     * editam cadastro de funcionário/morador) não podem, senão um deles de má-fé poderia
+     * trocar o e-mail de outra pessoa pra um que controla e depois usar "esqueci minha
+     * senha" (ver {@code AuthService.esqueciSenha}) pra tomar a conta.
+     *
+     * <p>Só bloqueia quando é de fato uma MUDANÇA (novo valor diferente do atual, sem
+     * diferenciar maiúsculas/minúsculas) - resubmeter o mesmo e-mail (comum em formulário
+     * que sempre manda o campo, mesmo sem editar) nunca é bloqueado, nem definir o e-mail
+     * pela primeira vez (ainda {@code null}) - isso é cadastro, não troca. */
+    public static void exigirAdministradorParaTrocarEmail(
+            ContextoAutenticado contexto, String emailAtual, String novoEmail) {
+        boolean mudouDeVerdade = emailAtual != null
+                && !emailAtual.isBlank()
+                && novoEmail != null
+                && !emailAtual.equalsIgnoreCase(novoEmail.trim());
+        if (mudouDeVerdade && !ehAdministrador(contexto)) {
+            throw new ForbiddenException(
+                    "Só administrador pode alterar o e-mail de uma pessoa que já tem e-mail cadastrado");
+        }
+    }
 }

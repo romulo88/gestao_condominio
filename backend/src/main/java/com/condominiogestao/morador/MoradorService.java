@@ -5,11 +5,10 @@ import com.condominiogestao.common.Cpf;
 import com.condominiogestao.common.ResourceNotFoundException;
 import com.condominiogestao.morador.dto.MoradorCreateRequest;
 import com.condominiogestao.morador.dto.MoradorResponse;
+import com.condominiogestao.notificacao.SenhaProvisoriaService;
 import com.condominiogestao.pessoa.Pessoa;
 import com.condominiogestao.pessoa.PessoaRepository;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,18 +23,13 @@ public class MoradorService {
 
     private final MoradorRepository repository;
     private final PessoaRepository pessoaRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final String senhaPadrao;
+    private final SenhaProvisoriaService senhaProvisoriaService;
 
     public MoradorService(
-            MoradorRepository repository,
-            PessoaRepository pessoaRepository,
-            PasswordEncoder passwordEncoder,
-            @Value("${auth.senha-padrao}") String senhaPadrao) {
+            MoradorRepository repository, PessoaRepository pessoaRepository, SenhaProvisoriaService senhaProvisoriaService) {
         this.repository = repository;
         this.pessoaRepository = pessoaRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.senhaPadrao = senhaPadrao;
+        this.senhaProvisoriaService = senhaProvisoriaService;
     }
 
     public List<MoradorResponse> listar() {
@@ -70,10 +64,11 @@ public class MoradorService {
             nova.setNome(request.nome());
             nova.setCpf(cpf);
             nova.setEmail(request.email());
-            // Nasce com a senha padrão, marcada pra trocar no primeiro acesso - ver
-            // AuthService (fluxo de "Esqueci minha senha").
-            nova.setSenhaHash(passwordEncoder.encode(senhaPadrao));
-            nova.setPrecisaTrocarSenha(true);
+            // Pedido do Romulo: manda um código temporário pro e-mail em vez de nascer com
+            // a senha padrão pública - mesmo mecanismo de "Esqueci minha senha" (ver
+            // SenhaProvisoriaService). Só se aplica a Pessoa GENUINAMENTE nova - quem já
+            // existe (reaproveitada abaixo) já tem senha própria, não é tocada aqui.
+            senhaProvisoriaService.gerarEEnviar(nova);
             return pessoaRepository.save(nova);
         });
 

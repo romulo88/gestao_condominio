@@ -1,12 +1,12 @@
 package com.condominiogestao.auth;
 
 import com.condominiogestao.auth.dto.ContextoDto;
+import com.condominiogestao.auth.dto.EsqueciSenhaRequest;
 import com.condominiogestao.auth.dto.LoginRequest;
 import com.condominiogestao.auth.dto.LoginResponse;
 import com.condominiogestao.auth.dto.SelecionarContextoRequest;
 import com.condominiogestao.auth.dto.TokenResponse;
 import com.condominiogestao.auth.dto.TrocarSenhaRequest;
-import com.condominiogestao.auth.dto.VerificarIdentidadeRequest;
 import com.condominiogestao.common.ErrorResponse;
 import com.condominiogestao.security.ContextoAutenticado;
 import io.swagger.v3.oas.annotations.Operation;
@@ -66,17 +66,18 @@ public class AuthController {
         return service.selecionarContexto(extrairToken(authorization), request);
     }
 
-    @PostMapping("/verificar-identidade")
+    @PostMapping("/esqueci-senha")
     @SecurityRequirements
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(summary = "Passo 1 de \"Esqueci minha senha\" - confirma CPF + e-mail",
-            description = "204 se existe uma pessoa com esse CPF e esse e-mail juntos; 404 caso contrário (sem "
-                    + "dizer qual dos dois está errado). ⚠️ Não é prova real de posse do e-mail (sem link único "
-                    + "enviado por e-mail ainda) - ver docs/modelo-dados.md.")
+    @Operation(summary = "Passo 1 de \"Esqueci minha senha\" - confirma CPF + e-mail e manda um código por e-mail",
+            description = "204 se existe uma pessoa com esse CPF e esse e-mail juntos (sem dizer qual dos dois "
+                    + "está errado, se algum estiver); 404 caso contrário. Gera um código numérico temporário, "
+                    + "grava como a senha da pessoa e manda por e-mail - o passo 2 (/trocar-senha) usa esse "
+                    + "código como \"senha atual\".")
     @ApiResponse(responseCode = "404", description = "CPF e e-mail não correspondem a nenhuma pessoa cadastrada",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    public void verificarIdentidade(@Valid @RequestBody VerificarIdentidadeRequest request) {
-        service.verificarIdentidade(request);
+    public void esqueciSenha(@Valid @RequestBody EsqueciSenhaRequest request) {
+        service.esqueciSenha(request);
     }
 
     @PostMapping("/trocar-senha")

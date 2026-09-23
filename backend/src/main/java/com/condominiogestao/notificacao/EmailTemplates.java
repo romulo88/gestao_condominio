@@ -169,6 +169,74 @@ public final class EmailTemplates {
         return new CorpoEmail(texto, html);
     }
 
+    /** Pedido do Romulo: e-mail do fluxo "Esqueci minha senha" - mesmo padrão visual dos
+     * e-mails de demanda, título "Trocar senha" (aqui em azul, não é nem aprovação nem
+     * reprovação). Mostra CPF e e-mail usados na solicitação (confirma que é a conta certa)
+     * e o código temporário em destaque, seguido da instrução de uso. {@code codigo} não
+     * precisa de {@code htmlEscape} - é sempre numérico, gerado pelo próprio sistema (ver
+     * {@code AuthService.esqueciSenha}), nunca texto livre digitado por alguém. */
+    public static CorpoEmail trocarSenha(String cpf, String email, String codigo) {
+        String corDestaque = "#2563eb";
+
+        List<String[]> linhas = new ArrayList<>();
+        linhas.add(new String[] {"CPF", HtmlUtils.htmlEscape(cpf)});
+        linhas.add(new String[] {"E-mail", HtmlUtils.htmlEscape(email)});
+
+        StringBuilder tabelaHtml = new StringBuilder();
+        for (int i = 0; i < linhas.size(); i++) {
+            tabelaHtml.append(linha(linhas.get(i)[0], linhas.get(i)[1], i < linhas.size() - 1));
+        }
+
+        String codigoHtml = "<div style=\"margin:20px 0;padding:16px;background-color:#eff6ff;"
+                + "border-radius:8px;text-align:center;\">"
+                + "<span style=\"font-size:26px;font-weight:bold;letter-spacing:4px;color:#1e3a8a;\">"
+                + codigo + "</span></div>";
+
+        String instrucoesHtml = "<p style=\"margin:0;color:#334155;font-size:14px;line-height:1.6;\">"
+                + "Use o código acima como sua <strong>senha atual</strong> na tela de login, em "
+                + "\"Esqueceu sua senha?\", informando de novo o CPF e o e-mail acima - em seguida, "
+                + "escolha sua senha nova. Se você não pediu essa troca, sua senha foi alterada mesmo "
+                + "assim - avise a administração do seu condomínio o quanto antes.</p>";
+
+        String texto = "Este é um e-mail informativo - não é necessário respondê-lo.\n\n"
+                + "Você solicitou a troca de senha da sua conta no Commander.\n\n"
+                + "CPF: " + cpf + "\n"
+                + "E-mail: " + email + "\n\n"
+                + "Seu código temporário: " + codigo + "\n\n"
+                + "Use o código acima como sua senha atual na tela de login, em \"Esqueceu sua senha?\", "
+                + "informando de novo o CPF e o e-mail acima - em seguida, escolha sua senha nova. Se "
+                + "você não pediu essa troca, sua senha foi alterada mesmo assim - avise a administração "
+                + "do seu condomínio o quanto antes.\n";
+
+        String html = "<!DOCTYPE html>"
+                + "<html lang=\"pt-BR\"><body style=\"margin:0;padding:0;background-color:#f1f5f9;"
+                + "font-family:Arial,Helvetica,sans-serif;\">"
+                + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+                + "style=\"background-color:#f1f5f9;padding:24px 0;\"><tr><td align=\"center\">"
+                + "<table role=\"presentation\" width=\"480\" cellpadding=\"0\" cellspacing=\"0\" "
+                + "style=\"background-color:#ffffff;border-radius:8px;overflow:hidden;\">"
+                + logoCommander()
+                + "<tr><td style=\"background-color:" + corDestaque + ";padding:16px 24px;\">"
+                + "<span style=\"color:#ffffff;font-size:13px;font-weight:bold;letter-spacing:0.5px;"
+                + "text-transform:uppercase;\">Trocar senha</span></td></tr>"
+                + "<tr><td style=\"padding:24px;\">"
+                + "<p style=\"margin:0 0 16px;color:#334155;font-size:14px;line-height:1.5;\">"
+                + "Você solicitou a troca de senha da sua conta no Commander.</p>"
+                + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+                + "style=\"border-collapse:collapse;\">"
+                + tabelaHtml
+                + "</table>"
+                + codigoHtml
+                + instrucoesHtml
+                + "</td></tr>"
+                + "<tr><td style=\"padding:16px 24px;background-color:#f8fafc;border-top:1px solid #e2e8f0;\">"
+                + "<p style=\"margin:0;color:#94a3b8;font-size:12px;\">Este é um e-mail informativo - não é "
+                + "necessário respondê-lo.</p></td></tr>"
+                + "</table></td></tr></table></body></html>";
+
+        return new CorpoEmail(texto, html);
+    }
+
     /** "Commander" numa barra escura em degradê azul (mesmo estilo de
      * {@code AuthLayout}/{@code BrandMark} no frontend: slate-950 → slate-900 → blue-900).
      * `background-image` com gradiente pra quem suporta, `background-color` de fallback pra

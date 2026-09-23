@@ -14,12 +14,11 @@ import com.condominiogestao.morador.dto.MoradorCondominioCreateRequest;
 import com.condominiogestao.morador.dto.MoradorCondominioResponse;
 import com.condominiogestao.morador.dto.MoradorCondominioResumoResponse;
 import com.condominiogestao.morador.dto.MoradorCondominioUpdateRequest;
+import com.condominiogestao.notificacao.SenhaProvisoriaService;
 import com.condominiogestao.security.ContextoAutenticado;
 import java.util.List;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,22 +30,19 @@ public class MoradorCondominioService {
     private final MoradorRepository moradorRepository;
     private final CondominioRepository condominioRepository;
     private final BlocoRepository blocoRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final String senhaPadrao;
+    private final SenhaProvisoriaService senhaProvisoriaService;
 
     public MoradorCondominioService(
             MoradorCondominioRepository repository,
             MoradorRepository moradorRepository,
             CondominioRepository condominioRepository,
             BlocoRepository blocoRepository,
-            PasswordEncoder passwordEncoder,
-            @Value("${auth.senha-padrao}") String senhaPadrao) {
+            SenhaProvisoriaService senhaProvisoriaService) {
         this.repository = repository;
         this.moradorRepository = moradorRepository;
         this.condominioRepository = condominioRepository;
         this.blocoRepository = blocoRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.senhaPadrao = senhaPadrao;
+        this.senhaProvisoriaService = senhaProvisoriaService;
     }
 
     /** Filtra por condomínio ou por morador se informados; sem nenhum, lista tudo. */
@@ -140,10 +136,15 @@ public class MoradorCondominioService {
 
         vinculo.setBloco(bloco);
         vinculo.setNumeroUnidade(request.numeroUnidade());
+        // Trocar e-mail já cadastrado é ação de administrador, não de síndico/sub-síndico
+        // (ver Autorizacao.exigirAdministradorParaTrocarEmail) - previne que alguém com
+        // acesso de gestor troque o e-mail de outra pessoa pra tomar a conta dela depois.
         // Email mora em Pessoa (identidade compartilhada), não no vínculo - a entidade já
         // está no contexto de persistência (veio de buscarEntidadePorId nesta mesma
         // transação), então basta mutar; o Hibernate persiste sozinho no commit (mesmo
         // padrão já usado em FuncionarioService/MoradorService pro ramo "pessoa já existe").
+        Autorizacao.exigirAdministradorParaTrocarEmail(
+                contexto, vinculo.getMorador().getPessoa().getEmail(), request.email());
         vinculo.getMorador().getPessoa().setEmail(request.email());
 
         return MoradorCondominioResponse.from(repository.save(vinculo));
@@ -173,22 +174,18 @@ public class MoradorCondominioService {
         return MoradorCondominioResponse.from(repository.save(vinculo));
     }
 
-    /** Reseta a senha da pessoa por trás do vínculo pra padrão ({@code auth.senha-padrao})
-     * e liga {@code precisaTrocarSenha} de novo - mesmo estado de uma pessoa recém-criada.
-     * Pensado pro caso "morador esqueceu a senha atual (não só a nunca trocou)": quem tem
-     * esse botão na mão (síndico/sub-síndico/administrador) precisa avisar o morador da
-     * senha padrão por fora, já que ela não é devolvida em nenhum lugar visível da tela de
-     * login (mesma ressalva de segurança do cadastro). Mesma autorização de {@link #criar}
-     * - afeta a pessoa (login em qualquer condomínio), não só este vínculo, mas só quem
-     * gerencia este condomínio consegue acionar por aqui. */
+    /** Reseta a senha da pessoa por trás do vínculo - pedido do Romulo: manda um código
+     * temporário pro e-mail dela (mesmo mecanismo de "Esqueci minha senha", ver
+     * {@link SenhaProvisoriaService}) em vez de voltar pra senha padrão pública. Pensado
+     * pro caso "morador esqueceu a senha atual (não só a nunca trocou)". Mesma autorização
+     * de {@link #criar} - afeta a pessoa (login em qualquer condomínio), não só este
+     * vínculo, mas só quem gerencia este condomínio consegue acionar por aqui. */
     @Transactional
     public MoradorCondominioResponse zerarSenha(ContextoAutenticado contexto, Integer id) {
         MoradorCondominio vinculo = buscarEntidadePorId(id);
         Autorizacao.exigirAdministradorOuGestor(contexto, vinculo.getCondominio().getId());
 
-        var pessoa = vinculo.getMorador().getPessoa();
-        pessoa.setSenhaHash(passwordEncoder.encode(senhaPadrao));
-        pessoa.setPrecisaTrocarSenha(true);
+        senhaProvisoriaService.gerarEEnviar(vinculo.getMorador().getPessoa());
 
         return MoradorCondominioResponse.from(vinculo);
     }

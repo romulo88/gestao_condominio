@@ -38,7 +38,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/contexto",
-                                "/api/auth/verificar-identidade",
+                                "/api/auth/esqueci-senha",
                                 "/api/auth/trocar-senha",
                                 // Pedido do Romulo: link público do quadro Kanban, sem login (ver
                                 // KanbanPublicoController) - o token em si já é o controle de acesso.

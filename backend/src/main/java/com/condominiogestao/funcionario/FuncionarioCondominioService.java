@@ -12,14 +12,13 @@ import com.condominiogestao.funcionario.dto.FuncionarioCondominioCreateRequest;
 import com.condominiogestao.funcionario.dto.FuncionarioCondominioResponse;
 import com.condominiogestao.funcionario.dto.FuncionarioCondominioResumoResponse;
 import com.condominiogestao.funcionario.dto.FuncionarioCondominioUpdateRequest;
+import com.condominiogestao.notificacao.SenhaProvisoriaService;
 import com.condominiogestao.pessoa.PessoaFotoService;
 import com.condominiogestao.security.ContextoAutenticado;
 import java.util.List;
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,22 +30,19 @@ public class FuncionarioCondominioService {
     private final FuncionarioRepository funcionarioRepository;
     private final CondominioRepository condominioRepository;
     private final PessoaFotoService pessoaFotoService;
-    private final PasswordEncoder passwordEncoder;
-    private final String senhaPadrao;
+    private final SenhaProvisoriaService senhaProvisoriaService;
 
     public FuncionarioCondominioService(
             FuncionarioCondominioRepository repository,
             FuncionarioRepository funcionarioRepository,
             CondominioRepository condominioRepository,
             PessoaFotoService pessoaFotoService,
-            PasswordEncoder passwordEncoder,
-            @Value("${auth.senha-padrao}") String senhaPadrao) {
+            SenhaProvisoriaService senhaProvisoriaService) {
         this.repository = repository;
         this.funcionarioRepository = funcionarioRepository;
         this.condominioRepository = condominioRepository;
         this.pessoaFotoService = pessoaFotoService;
-        this.passwordEncoder = passwordEncoder;
-        this.senhaPadrao = senhaPadrao;
+        this.senhaProvisoriaService = senhaProvisoriaService;
     }
 
     /** Filtra por condomínio ou por funcionário se informados; sem nenhum, lista tudo. */
@@ -146,6 +142,11 @@ public class FuncionarioCondominioService {
         // de verdade foi informado - em branco não apaga o e-mail que já existia (a mesma
         // Pessoa pode ter outros papéis/vínculos usando esse e-mail).
         if (informouEmail) {
+            // Trocar e-mail já cadastrado é ação de administrador, não de síndico/sub-síndico
+            // (ver Autorizacao.exigirAdministradorParaTrocarEmail) - previne que alguém com
+            // acesso de gestor troque o e-mail de outra pessoa pra tomar a conta dela depois.
+            Autorizacao.exigirAdministradorParaTrocarEmail(
+                    contexto, vinculo.getFuncionario().getPessoa().getEmail(), request.email());
             vinculo.getFuncionario().getPessoa().setEmail(request.email());
         }
 
@@ -181,18 +182,17 @@ public class FuncionarioCondominioService {
         return FuncionarioCondominioResponse.from(repository.save(vinculo));
     }
 
-    /** Reseta a senha da pessoa por trás do vínculo pra padrão ({@code auth.senha-padrao})
-     * e liga {@code precisaTrocarSenha} de novo - mesmo padrão de
-     * {@code MoradorCondominioService.zerarSenha}, mesma justificativa/ressalva de
-     * segurança lá documentada. Mesma autorização de {@link #criar}. */
+    /** Reseta a senha da pessoa por trás do vínculo - pedido do Romulo: manda um código
+     * temporário pro e-mail dela (mesmo mecanismo de "Esqueci minha senha", ver
+     * {@link SenhaProvisoriaService}) em vez de voltar pra senha padrão pública. Mesmo
+     * padrão de {@code MoradorCondominioService.zerarSenha}. Mesma autorização de
+     * {@link #criar}. */
     @Transactional
     public FuncionarioCondominioResponse zerarSenha(ContextoAutenticado contexto, Integer id) {
         FuncionarioCondominio vinculo = buscarEntidadePorId(id);
         Autorizacao.exigirAdministradorOuGestor(contexto, vinculo.getCondominio().getId());
 
-        var pessoa = vinculo.getFuncionario().getPessoa();
-        pessoa.setSenhaHash(passwordEncoder.encode(senhaPadrao));
-        pessoa.setPrecisaTrocarSenha(true);
+        senhaProvisoriaService.gerarEEnviar(vinculo.getFuncionario().getPessoa());
 
         return FuncionarioCondominioResponse.from(vinculo);
     }

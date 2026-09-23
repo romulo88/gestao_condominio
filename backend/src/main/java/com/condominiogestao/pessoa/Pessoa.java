@@ -49,10 +49,11 @@ public class Pessoa {
     @Column(name = "senha_hash", columnDefinition = "TEXT")
     private String senhaHash;
 
-    /** Nasce {@code true} - toda pessoa é criada com a senha padrão
-     * ({@code auth.senha-padrao}, ver os services de criação), que nunca serve pra
-     * logar de verdade. Só o fluxo guiado (`POST /api/auth/verificar-identidade` +
-     * `/api/auth/trocar-senha`) desliga essa flag - ver {@code AuthService.login}. */
+    /** Nasce {@code true} - toda pessoa é criada com uma senha provisória (código
+     * temporário gerado por {@code SenhaProvisoriaService} e mandado por e-mail, se
+     * cadastrada com um), que nunca serve pra logar de verdade. Só o fluxo guiado
+     * (`POST /api/auth/esqueci-senha` + `/api/auth/trocar-senha`) desliga essa flag - ver
+     * {@code AuthService.login}. */
     @Column(name = "precisa_trocar_senha")
     private boolean precisaTrocarSenha = true;
 

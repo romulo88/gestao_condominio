@@ -78,9 +78,11 @@ jwt:
   expiracao-completo-ms: 43200000 # 12h - sessão de trabalho num condomínio
   expiracao-pre-auth-ms: 300000   # 5min - só pra dar tempo de escolher o contexto
 
-# Senha de toda Pessoa nova (Funcionario/Morador/Administrador) - nunca serve pra
-# logar de verdade (Pessoa.precisaTrocarSenha nasce true), só pra abrir o fluxo
-# guiado de troca (POST /api/auth/verificar-identidade + /api/auth/trocar-senha).
+# Senha de todo Administrador novo (Funcionario/Morador ganham um código temporário por
+# e-mail no lugar dessa, ver SenhaProvisoriaService) - nunca serve pra logar de verdade
+# (Pessoa.precisaTrocarSenha nasce true), só pra abrir o fluxo guiado de troca
+# (POST /api/auth/esqueci-senha + /api/auth/trocar-senha). Também usada por
+# AuthService.trocarSenha pra impedir escolher essa mesma senha como a nova.
 auth:
   senha-padrao: Trocar@123
 
