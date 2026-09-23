@@ -197,7 +197,7 @@ public final class EmailTemplates {
                 + "<span style=\"font-size:26px;font-weight:bold;letter-spacing:4px;color:#1e3a8a;\">"
                 + codigo + "</span></div>";
 
-        String instrucoesHtml = "<p style=\"margin:0;color:#334155;font-size:14px;line-height:1.6;\">"
+        String instrucoesHtml = "<p style=\"margin:0;color:#334155;font-size:14px;line-height:1.6;text-align:justify;\">"
                 + "Use o código acima como sua <strong>senha atual</strong> na tela de login, em "
                 + "\"Esqueceu sua senha?\", informando de novo o CPF e o e-mail acima - em seguida, "
                 + "escolha sua senha nova. Se você não pediu essa troca, sua senha foi alterada mesmo "
@@ -308,7 +308,8 @@ public final class EmailTemplates {
                 + "style=\"border-collapse:collapse;\">"
                 + tabelaHtml
                 + "</table>"
-                + "<p style=\"margin:20px 0 0;color:#334155;font-size:14px;line-height:1.6;\">" + instrucao
+                + "<p style=\"margin:20px 0 0;color:#334155;font-size:14px;line-height:1.6;text-align:justify;\">"
+                + instrucao
                 + "</p>"
                 + botaoLogin()
                 + "</td></tr>"
