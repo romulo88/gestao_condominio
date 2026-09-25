@@ -11,6 +11,7 @@ import com.condominiogestao.etiqueta.dto.EtiquetaResponse;
 import com.condominiogestao.kanban.dto.CardKanbanPublicoResponse;
 import com.condominiogestao.kanban.dto.ColunaKanbanPublicaResponse;
 import com.condominiogestao.kanban.dto.KanbanPublicoResponse;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -73,6 +74,12 @@ public class KanbanPublicoService {
         List<Demanda> demandas = demandaRepository.findByCondominioId(condominio.getId()).stream()
                 .filter(d -> !d.isSigilosa())
                 .filter(d -> d.getStatusKanban() != null && idsColunasVisiveis.contains(d.getStatusKanban().getId()))
+                // Mesma posição manual do quadro logado (pedido do Romulo) - `ordem` só
+                // faz sentido comparado dentro da mesma coluna, mas como cada card só
+                // aparece na lista da PRÓPRIA coluna depois do agrupamento abaixo, ordenar
+                // a lista inteira por `ordem` já basta pra preservar a ordem certa em cada
+                // uma.
+                .sorted(Comparator.comparing(Demanda::getOrdem))
                 .toList();
         List<Integer> idsDemandas = demandas.stream().map(Demanda::getId).toList();
 

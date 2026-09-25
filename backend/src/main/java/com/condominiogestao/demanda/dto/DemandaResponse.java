@@ -21,6 +21,12 @@ public record DemandaResponse(
         /** Preenchidos só depois que a demanda entra no fluxo de triagem/kanban - null recém-criada. */
         Integer statusKanbanId,
         String statusKanbanNome,
+        /** Posição do card dentro da coluna atual (`statusKanbanId`) - pedido do Romulo:
+         * arrastar card pra qualquer posição, pra agrupar assuntos parecidos lado a lado.
+         * O frontend do Kanban ordena a lista inicial por este campo; depois disso, a
+         * ordem local do array já reordenado é que vale (ver `kanban/page.tsx`). Sem
+         * significado fora do quadro Kanban. */
+        Integer ordem,
         String funcionarioResponsavelNome,
         /** Quem decidiu (aprovou/reprovou) e quando - null enquanto pendente. */
         String funcionarioAprovadorNome,
@@ -153,6 +159,7 @@ public record DemandaResponse(
                 demanda.getStatusAprovacao(),
                 demanda.getStatusKanban() != null ? demanda.getStatusKanban().getId() : null,
                 demanda.getStatusKanban() != null ? demanda.getStatusKanban().getNome() : null,
+                demanda.getOrdem(),
                 demanda.getFuncionarioResponsavel() != null ? demanda.getFuncionarioResponsavel().getNome() : null,
                 demanda.getFuncionarioAprovador() != null ? demanda.getFuncionarioAprovador().getNome() : null,
                 demanda.getDataAprovacao(),

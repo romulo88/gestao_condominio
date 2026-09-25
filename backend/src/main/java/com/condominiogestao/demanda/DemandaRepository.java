@@ -24,4 +24,9 @@ public interface DemandaRepository extends JpaRepository<Demanda, Integer> {
     /** Usado por {@code StatusKanbanService.excluir} (pedido do Romulo) - só deixa excluir
      * uma coluna que não tem NENHUM card nela no momento. */
     boolean existsByStatusKanbanId(Integer statusKanbanId);
+
+    /** Todos os cards de uma coluna do Kanban, na ordem manual atual - usado por {@code
+     * DemandaService.moverKanban}/{@code aprovar} pra inserir/reordenar um card e
+     * renumerar o resto da coluna (pedido do Romulo: arrastar card pra qualquer posição). */
+    List<Demanda> findByStatusKanbanIdOrderByOrdemAsc(Integer statusKanbanId);
 }

@@ -94,6 +94,14 @@ public class Demanda {
     @JoinColumn(name = "id_status_kanban")
     private StatusKanban statusKanban;
 
+    /** Posição do card dentro da coluna do Kanban (`statusKanban`) - pedido do Romulo:
+     * poder arrastar um card pra qualquer posição, pra agrupar assuntos parecidos lado a
+     * lado. Sempre 0..N-1 dentro da mesma coluna, renumerada inteira a cada
+     * inserção/reordenação (ver {@code DemandaService.moverKanban}) - mesmo padrão de
+     * {@link com.condominiogestao.demanda.DemandaEtapa#getOrdem()}, só que relativo à
+     * coluna em vez da demanda. */
+    private Integer ordem = 0;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_funcionario_responsavel")
     private Funcionario funcionarioResponsavel;

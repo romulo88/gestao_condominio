@@ -469,6 +469,10 @@ public class DemandaService {
         }
 
         demanda.setStatusKanban(statusKanban);
+        // Primeira entrada na coluna sempre no fim da lista (pedido do Romulo: mesmo
+        // comportamento de sempre, só que com uma ordem de verdade em vez de depender de
+        // `createdAt`) - ver `DemandaService.moverKanban` pra reordenação de verdade.
+        demanda.setOrdem(repository.findByStatusKanbanIdOrderByOrdemAsc(statusKanban.getId()).size());
         Demanda salva = repository.save(demanda);
 
         DemandaStatusKanbanHistorico historico = new DemandaStatusKanbanHistorico();
@@ -527,9 +531,15 @@ public class DemandaService {
     }
 
     /**
-     * Move o card no quadro - arrastar de uma coluna pra outra. Só demanda já aprovada
-     * (já tem uma coluna) pode mudar de coluna; a entrada na primeira coluna é sempre
-     * via {@link #aprovar}.
+     * Move o card no quadro - arrastar de uma coluna pra outra, E/OU reordenar dentro da
+     * MESMA coluna (pedido do Romulo: agrupar cards de assuntos parecidos lado a lado).
+     * Só demanda já aprovada (já tem uma coluna) pode mudar de coluna; a entrada na
+     * primeira coluna é sempre via {@link #aprovar}. {@code antesDaDemandaId} (ver {@link
+     * DemandaMoverKanbanRequest}) decide a posição dentro da coluna de destino - {@code
+     * null} vai pro fim, preenchido insere a demanda arrastada imediatamente antes da
+     * demanda referenciada. Só gera histórico de transição/notificação de finalização
+     * quando a coluna muda de verdade - reordenar dentro da mesma coluna não é uma
+     * transição de status.
      */
     @Transactional
     public DemandaResponse moverKanban(ContextoAutenticado contexto, Integer id, DemandaMoverKanbanRequest request) {
@@ -548,35 +558,63 @@ public class DemandaService {
         }
 
         StatusKanban colunaAnterior = demanda.getStatusKanban();
-        if (colunaAnterior != null && colunaAnterior.getId().equals(novaColuna.getId())) {
-            // já está nessa coluna - nada a fazer
-            EtapaFlags flagsEtapas = flagsEtapas(demanda.getId());
-            return DemandaResponse.from(
-                    demanda,
-                    buscarEtiquetas(demanda.getId()),
-                    podeGerenciarSigilo(contexto, demanda),
-                    documentoRepository.existsByDemandaId(demanda.getId()),
-                    temNotaPendente(demanda.getId()),
-                    flagsEtapas.vencida(),
-                    flagsEtapas.vigente(),
-                    buscarResponsaveis(demanda.getId()),
-                    false,
-                    false);
+        boolean mudouColuna = colunaAnterior == null || !colunaAnterior.getId().equals(novaColuna.getId());
+
+        // Renumera a coluna de destino inteira com a demanda na posição pedida - simples
+        // e robusto pro volume esperado (poucas dezenas de cards por coluna), evita ordem
+        // fracionária. Remove a própria demanda da lista antes de reinserir, senão
+        // duplicaria quando a reordenação for dentro da MESMA coluna.
+        List<Demanda> demandasColuna = repository.findByStatusKanbanIdOrderByOrdemAsc(novaColuna.getId()).stream()
+                .filter(d -> !d.getId().equals(demanda.getId()))
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        int indiceDestino;
+        if (request.antesDaDemandaId() != null) {
+            indiceDestino = -1;
+            for (int i = 0; i < demandasColuna.size(); i++) {
+                if (demandasColuna.get(i).getId().equals(request.antesDaDemandaId())) {
+                    indiceDestino = i;
+                    break;
+                }
+            }
+            if (indiceDestino < 0) {
+                throw new InvalidRequestException("A demanda de referência não está nessa coluna");
+            }
+        } else {
+            indiceDestino = demandasColuna.size();
+        }
+        demandasColuna.add(indiceDestino, demanda);
+        for (int i = 0; i < demandasColuna.size(); i++) {
+            demandasColuna.get(i).setOrdem(i);
+        }
+        demanda.setStatusKanban(novaColuna);
+        repository.saveAll(demandasColuna);
+
+        // Trocou de coluna? A coluna de ORIGEM fica com um buraco na sequência (a demanda
+        // que saiu levava um número do meio) - renumera ela também, senão uma inserção
+        // futura no fim (`indiceDestino = size()`) pode colidir com uma ordem que já existe
+        // ali (duas demandas com a mesma `ordem`, ordem relativa entre elas indefinida).
+        if (mudouColuna && colunaAnterior != null) {
+            List<Demanda> demandasColunaAnterior = repository.findByStatusKanbanIdOrderByOrdemAsc(colunaAnterior.getId());
+            for (int i = 0; i < demandasColunaAnterior.size(); i++) {
+                demandasColunaAnterior.get(i).setOrdem(i);
+            }
+            repository.saveAll(demandasColunaAnterior);
         }
 
-        Funcionario funcionario = buscarFuncionario(contexto.pessoaId());
+        Demanda salva = demanda;
 
-        demanda.setStatusKanban(novaColuna);
-        Demanda salva = repository.save(demanda);
-
-        DemandaStatusKanbanHistorico historico = new DemandaStatusKanbanHistorico();
-        historico.setDemanda(salva);
-        historico.setStatusAnterior(colunaAnterior);
-        historico.setStatusNovo(novaColuna);
-        historico.setFuncionario(funcionario);
-        historicoRepository.save(historico);
-        if (novaColuna.isFinalistico()) {
-            notificarFinalizacao(salva);
+        if (mudouColuna) {
+            Funcionario funcionario = buscarFuncionario(contexto.pessoaId());
+            DemandaStatusKanbanHistorico historico = new DemandaStatusKanbanHistorico();
+            historico.setDemanda(salva);
+            historico.setStatusAnterior(colunaAnterior);
+            historico.setStatusNovo(novaColuna);
+            historico.setFuncionario(funcionario);
+            historicoRepository.save(historico);
+            if (novaColuna.isFinalistico()) {
+                notificarFinalizacao(salva);
+            }
         }
 
         EtapaFlags flagsEtapas = flagsEtapas(salva.getId());
