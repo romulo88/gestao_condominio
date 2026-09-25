@@ -18,6 +18,7 @@ import com.condominiogestao.demanda.dto.DemandaResponse;
 import com.condominiogestao.demanda.dto.ResponsavelResumoResponse;
 import com.condominiogestao.etiqueta.dto.EtiquetaResponse;
 import com.condominiogestao.funcionario.Funcionario;
+import com.condominiogestao.funcionario.FuncionarioPerfil;
 import com.condominiogestao.funcionario.FuncionarioRepository;
 import com.condominiogestao.kanban.StatusKanban;
 import com.condominiogestao.kanban.StatusKanbanRepository;
@@ -184,6 +185,10 @@ public class DemandaService {
                 : acessoSigilosoRepository.findByDemandaIdIn(idsSigilosos).stream()
                         .collect(Collectors.groupingBy(a -> a.getDemanda().getId()));
 
+        Set<Integer> idsOndeSouResponsavel = FuncionarioPerfil.acessoRestrito(contexto.perfil())
+                ? buscarIdsOndeSouResponsavel(contexto)
+                : Set.of();
+
         // Coluna pode ficar oculta pro morador (pedido do Romulo) - a coluna em si já some
         // do `StatusKanbanService.listarPorCondominio`, mas filtrar aqui também evita que a
         // demanda vaze pela API mesmo assim (defesa em profundidade, mesmo espírito do
@@ -193,6 +198,7 @@ public class DemandaService {
         List<Demanda> demandas = carregadas.stream()
                 .filter(d -> podeVerSigilosa(contexto, d, acessosPorDemanda))
                 .filter(d -> ehFuncionario || !todas || colunaVisivelExternamente(d))
+                .filter(d -> podeVerPeloPerfilRestrito(contexto, d, idsOndeSouResponsavel))
                 .sorted(Comparator.comparing(Demanda::getCreatedAt).reversed())
                 .toList();
 
@@ -280,6 +286,7 @@ public class DemandaService {
             String status,
             boolean notaNaoLida,
             boolean etapaVencida,
+            boolean meuResponsavel,
             int pagina,
             int tamanho) {
         exigirFuncionarioOuMorador(contexto);
@@ -294,8 +301,16 @@ public class DemandaService {
                 : acessoSigilosoRepository.findByDemandaIdIn(idsSigilosos).stream()
                         .collect(Collectors.groupingBy(a -> a.getDemanda().getId()));
 
+        // Mesmo set alimenta a visibilidade de perfil restrito E o filtro opt-in "Minhas
+        // demandas" (`meuResponsavel`) - busca uma vez só quando qualquer um dos dois
+        // precisar (evita N+1 e evita query à toa quando nenhum dos dois se aplica).
+        Set<Integer> idsOndeSouResponsavel = (FuncionarioPerfil.acessoRestrito(contexto.perfil()) || meuResponsavel)
+                ? buscarIdsOndeSouResponsavel(contexto)
+                : Set.of();
+
         List<Demanda> visiveis = carregadas.stream()
                 .filter(d -> podeVerSigilosa(contexto, d, acessosPorDemanda))
+                .filter(d -> podeVerPeloPerfilRestrito(contexto, d, idsOndeSouResponsavel))
                 .sorted(Comparator.comparing(Demanda::getCreatedAt).reversed())
                 .toList();
 
@@ -311,6 +326,7 @@ public class DemandaService {
 
         List<Demanda> filtradas = visiveis.stream()
                 .filter(d -> buscaNormalizada.isEmpty() || d.getDescricao().toLowerCase().contains(buscaNormalizada))
+                .filter(d -> !meuResponsavel || idsOndeSouResponsavel.contains(d.getId()))
                 .filter(d -> {
                     boolean bateStatus = notaNaoLida
                             || etapaVencida
@@ -898,6 +914,17 @@ public class DemandaService {
         if (!mesmoCondominio || !ehFuncionarioOuMorador) {
             return false;
         }
+        // Perfil de acesso restrito (rondista/agente de convívio, pedido do Romulo) só vê a
+        // própria demanda OU demanda aprovada em que é responsável - consulta direta (uma
+        // demanda só), sem custar nada pros demais perfis (a condição de fora já os libera
+        // sem nunca chegar na consulta).
+        if (FuncionarioPerfil.acessoRestrito(contexto.perfil()) && !ehFuncionarioSolicitante(contexto, demanda)) {
+            boolean ehResponsavelAprovada = demanda.getStatusAprovacao() == DemandaStatusAprovacao.aprovada
+                    && responsavelRepository.existsByDemandaIdAndFuncionarioId(demanda.getId(), contexto.pessoaId());
+            if (!ehResponsavelAprovada) {
+                return false;
+            }
+        }
         if (!demanda.isSigilosa()) {
             return true;
         }
@@ -910,6 +937,40 @@ public class DemandaService {
      * que já está numa coluna marcada oculta (ver {@code StatusKanban.visivelExternamente}). */
     private boolean colunaVisivelExternamente(Demanda demanda) {
         return demanda.getStatusKanban() == null || demanda.getStatusKanban().isVisivelExternamente();
+    }
+
+    private boolean ehFuncionarioSolicitante(ContextoAutenticado contexto, Demanda demanda) {
+        return TipoPessoa.funcionario.name().equals(contexto.tipoPapel())
+                && demanda.getFuncionarioSolicitante() != null
+                && demanda.getFuncionarioSolicitante().getId().equals(contexto.pessoaId());
+    }
+
+    /** Perfil de acesso restrito (rondista/agente de convívio, pedido do Romulo) só vê a
+     * própria demanda (qualquer status - acompanha do início ao fim) OU demanda aprovada em
+     * que está marcado como responsável (de qualquer solicitante) - nunca vê demanda de
+     * outra pessoa que não seja aprovada, nem aprovada de outra pessoa em que não é
+     * responsável. Sem perfil restrito, sempre {@code true} (comportamento de sempre
+     * preservado pros demais perfis). {@code idsOndeSouResponsavel} vem pré-carregado (ver
+     * {@link #buscarIdsOndeSouResponsavel}) pra não custar 1 query por demanda em listagem. */
+    private boolean podeVerPeloPerfilRestrito(
+            ContextoAutenticado contexto, Demanda demanda, Set<Integer> idsOndeSouResponsavel) {
+        if (!FuncionarioPerfil.acessoRestrito(contexto.perfil())) {
+            return true;
+        }
+        if (ehFuncionarioSolicitante(contexto, demanda)) {
+            return true;
+        }
+        return demanda.getStatusAprovacao() == DemandaStatusAprovacao.aprovada
+                && idsOndeSouResponsavel.contains(demanda.getId());
+    }
+
+    /** Ids de demanda em que o funcionário do contexto está marcado como responsável -
+     * alimenta {@link #podeVerPeloPerfilRestrito} (visibilidade) e o filtro opt-in "Minhas
+     * demandas" (`meuResponsavel` em {@link #listarPagina}). */
+    private Set<Integer> buscarIdsOndeSouResponsavel(ContextoAutenticado contexto) {
+        return responsavelRepository.findByFuncionarioId(contexto.pessoaId()).stream()
+                .map(r -> r.getDemanda().getId())
+                .collect(Collectors.toSet());
     }
 
     private List<EtiquetaResponse> buscarEtiquetas(Integer demandaId) {
@@ -1104,9 +1165,13 @@ public class DemandaService {
         }
     }
 
+    /** Usada por aprovar/reprovar/moverKanban/alternarSigilo/arquivar - ações de gestão do
+     * fluxo, por isso perfil de acesso restrito (rondista/agente de convívio, pedido do
+     * Romulo) nunca é autorizado aqui, mesmo sendo funcionário deste condomínio. */
     private void exigirFuncionarioDoCondominio(ContextoAutenticado contexto, Demanda demanda) {
         boolean autorizado = TipoPessoa.funcionario.name().equals(contexto.tipoPapel())
-                && demanda.getCondominio().getId().equals(contexto.condominioId());
+                && demanda.getCondominio().getId().equals(contexto.condominioId())
+                && !FuncionarioPerfil.acessoRestrito(contexto.perfil());
         if (!autorizado) {
             throw new ForbiddenException("Só funcionário deste condomínio pode fazer isso");
         }

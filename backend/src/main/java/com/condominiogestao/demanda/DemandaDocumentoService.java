@@ -7,6 +7,7 @@ import com.condominiogestao.common.ResourceNotFoundException;
 import com.condominiogestao.common.TipoPessoa;
 import com.condominiogestao.demanda.dto.DemandaDocumentoResponse;
 import com.condominiogestao.funcionario.Funcionario;
+import com.condominiogestao.funcionario.FuncionarioPerfil;
 import com.condominiogestao.funcionario.FuncionarioRepository;
 import com.condominiogestao.morador.Morador;
 import com.condominiogestao.morador.MoradorRepository;
@@ -222,8 +223,13 @@ public class DemandaDocumentoService {
      * lacuna já documentada lá (ações em cima de uma demanda específica ainda não sabem
      * se ela é sigilosa, só isso aqui). */
     private void exigirPodeMexerAnexos(ContextoAutenticado contexto, Demanda demanda) {
+        // Perfil de acesso restrito (rondista/agente de convívio, pedido do Romulo) não
+        // vale "qualquer funcionário do condomínio" - só libera quando `podeVer` já libera
+        // (mesma regra de visibilidade: a própria demanda, ou aprovada em que é
+        // responsável). Demais perfis continuam com o comportamento de sempre.
         boolean ehFuncionarioDoCondominio = TipoPessoa.funcionario.name().equals(contexto.tipoPapel())
-                && demanda.getCondominio().getId().equals(contexto.condominioId());
+                && demanda.getCondominio().getId().equals(contexto.condominioId())
+                && (!FuncionarioPerfil.acessoRestrito(contexto.perfil()) || demandaService.podeVer(contexto, demanda));
         boolean ehSolicitante = TipoPessoa.morador.name().equals(contexto.tipoPapel())
                 ? demanda.getMoradorSolicitante() != null
                         && demanda.getMoradorSolicitante().getId().equals(contexto.pessoaId())

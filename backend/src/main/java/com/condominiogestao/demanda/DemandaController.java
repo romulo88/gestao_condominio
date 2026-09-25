@@ -62,16 +62,18 @@ public class DemandaController {
                     + "porque precisa da lista inteira pra distribuir nas colunas. `status` aceita um valor de "
                     + "`DemandaStatusAprovacao` OU `kanban:<id>` (situação no Kanban, mesma convenção da tela); "
                     + "`notaNaoLida`/`etapaVencida` ignoram `status` quando marcados, igual o filtro da tela "
-                    + "já fazia client-side.")
+                    + "já fazia client-side. `meuResponsavel` (pedido do Romulo) filtra só as demandas em que "
+                    + "quem está logado está marcado como responsável.")
     public DemandaPaginaResponse listarPagina(
             @AuthenticationPrincipal ContextoAutenticado contexto,
             @RequestParam(required = false) String busca,
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "false") boolean notaNaoLida,
             @RequestParam(defaultValue = "false") boolean etapaVencida,
+            @RequestParam(defaultValue = "false") boolean meuResponsavel,
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "20") int tamanho) {
-        return service.listarPagina(contexto, busca, status, notaNaoLida, etapaVencida, pagina, tamanho);
+        return service.listarPagina(contexto, busca, status, notaNaoLida, etapaVencida, meuResponsavel, pagina, tamanho);
     }
 
     @PostMapping

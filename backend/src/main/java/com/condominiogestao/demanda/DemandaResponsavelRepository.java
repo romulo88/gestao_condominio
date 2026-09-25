@@ -11,4 +11,8 @@ public interface DemandaResponsavelRepository extends JpaRepository<DemandaRespo
     List<DemandaResponsavel> findByDemandaIdIn(List<Integer> demandaIds);
 
     boolean existsByDemandaIdAndFuncionarioId(Integer demandaId, Integer funcionarioId);
+
+    /** Todas as atribuições de um funcionário - usado pra visibilidade de perfil restrito
+     * (`DemandaService.listar`/`listarPagina`) e pro filtro "Minhas demandas". */
+    List<DemandaResponsavel> findByFuncionarioId(Integer funcionarioId);
 }

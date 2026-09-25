@@ -12,6 +12,7 @@ import com.condominiogestao.demanda.dto.DemandaResponsavelResponse;
 import com.condominiogestao.funcionario.Funcionario;
 import com.condominiogestao.funcionario.FuncionarioCondominio;
 import com.condominiogestao.funcionario.FuncionarioCondominioRepository;
+import com.condominiogestao.funcionario.FuncionarioPerfil;
 import com.condominiogestao.funcionario.FuncionarioRepository;
 import com.condominiogestao.security.ContextoAutenticado;
 import java.util.Comparator;
@@ -123,10 +124,14 @@ public class DemandaResponsavelService {
     }
 
     /** Mesmo critério já usado em aprovar/reprovar/mover Kanban - duplicado de propósito
-     * (ver justificativa equivalente em {@code DemandaAcessoSigilosoService}). */
+     * (ver justificativa equivalente em {@code DemandaAcessoSigilosoService}). Perfil de
+     * acesso restrito (rondista/agente de convívio, pedido do Romulo) nunca atribui
+     * responsável a ninguém - continua podendo SER atribuído por outro (não passa por
+     * aqui). */
     private void exigirFuncionarioDoCondominio(ContextoAutenticado contexto, Demanda demanda) {
         boolean autorizado = TipoPessoa.funcionario.name().equals(contexto.tipoPapel())
-                && demanda.getCondominio().getId().equals(contexto.condominioId());
+                && demanda.getCondominio().getId().equals(contexto.condominioId())
+                && !FuncionarioPerfil.acessoRestrito(contexto.perfil());
         if (!autorizado) {
             throw new ForbiddenException("Só funcionário deste condomínio pode atribuir responsável pela demanda");
         }
