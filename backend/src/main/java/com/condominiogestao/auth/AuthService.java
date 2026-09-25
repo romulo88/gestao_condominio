@@ -8,7 +8,6 @@ import com.condominiogestao.auth.dto.SelecionarContextoRequest;
 import com.condominiogestao.auth.dto.TokenResponse;
 import com.condominiogestao.auth.dto.TrocarSenhaRequest;
 import com.condominiogestao.administrador.AdministradorRepository;
-import com.condominiogestao.common.Cpf;
 import com.condominiogestao.common.InvalidRequestException;
 import com.condominiogestao.common.ResourceNotFoundException;
 import com.condominiogestao.common.Situacao;
@@ -74,11 +73,11 @@ public class AuthService {
     @Transactional
     public LoginResponse login(LoginRequest request) {
         Pessoa pessoa = pessoaRepository
-                .findByCpf(Cpf.normalizar(request.cpf()))
-                .orElseThrow(() -> new UnauthorizedException("CPF ou senha inválidos"));
+                .findByEmail(request.email().trim().toLowerCase())
+                .orElseThrow(() -> new UnauthorizedException("E-mail ou senha inválidos"));
 
         if (pessoa.getSenhaHash() == null || !passwordEncoder.matches(request.senha(), pessoa.getSenhaHash())) {
-            throw new UnauthorizedException("CPF ou senha inválidos");
+            throw new UnauthorizedException("E-mail ou senha inválidos");
         }
 
         // Toda pessoa nasce com a senha padrão e essa flag ligada (ver services de
@@ -157,41 +156,39 @@ public class AuthService {
 
     /**
      * Passo 1 do fluxo "Esqueci minha senha" (ver {@code login/page.tsx}): confirma que
-     * existe uma {@link Pessoa} com esse CPF <b>e</b> esse e-mail juntos (não diz qual dos
-     * dois está errado, se algum estiver - reduz a chance de alguém usar isso pra
-     * descobrir se um CPF existe no sistema), e delega a {@link SenhaProvisoriaService}
+     * existe uma {@link Pessoa} com esse e-mail, e delega a {@link SenhaProvisoriaService}
      * (pedido do Romulo: "mandar pro e-mail um número randômico como senha provisória") -
      * gera o código, grava como a senha da pessoa, religa {@code precisaTrocarSenha} e
      * manda por e-mail. O passo 2 ({@link #trocarSenha}) usa esse código como "senha
-     * atual". E-mail comparado sem diferenciar maiúsculas/minúsculas.
+     * atual".
      *
      * <p><b>Efeito colateral que vale conhecer</b>: como o código já substitui a senha na
      * hora (não é um token separado guardado à parte), a senha de verdade da pessoa muda
-     * já nesse passo - se alguém mais souber o CPF+e-mail de outra pessoa e chamar isso
-     * sem ela ter pedido, a senha dela É alterada mesmo assim (fica sem acesso até
-     * descobrir e usar o código do e-mail). Mais forte que a versão anterior (que só
-     * confirmava identidade e deixava a pessoa trocar usando a senha padrão, conhecida por
-     * qualquer um), mas ainda não é o ideal (um token de reset separado, sem tocar na senha
-     * real até a troca de fato, evitaria esse efeito colateral) - ver docs/modelo-dados.md.
+     * já nesse passo - se alguém mais souber o e-mail de outra pessoa e chamar isso sem
+     * ela ter pedido, a senha dela É alterada mesmo assim (fica sem acesso até descobrir e
+     * usar o código do e-mail). Mais forte que a versão anterior a v172 (que só confirmava
+     * CPF+e-mail e deixava a pessoa trocar usando a senha padrão, conhecida por qualquer
+     * um), mas ainda não é o ideal (um token de reset separado, sem tocar na senha real até
+     * a troca de fato, evitaria esse efeito colateral) - ver docs/modelo-dados.md.
      */
     @Transactional
     public void esqueciSenha(EsqueciSenhaRequest request) {
-        Pessoa pessoa = buscarPessoaPorCpfEEmail(request.cpf(), request.email());
+        Pessoa pessoa = buscarPessoaPorEmail(request.email());
         senhaProvisoriaService.gerarEEnviarCodigo(pessoa);
         pessoaRepository.save(pessoa);
     }
 
     /**
-     * Passo 2 do fluxo "Esqueci minha senha" - confere CPF + e-mail (de novo, por
-     * segurança - defesa em profundidade caso alguém chame isso direto sem passar pelo
-     * passo 1) e a senha atual, troca pela nova e desliga {@code precisaTrocarSenha}
-     * (é isso que libera o login de verdade - ver {@link #login}). A pessoa nunca pode
-     * escolher a própria senha padrão como senha nova, senão "nunca entra com a senha
-     * padrão" deixaria de valer se alguém escolhesse isso de propósito.
+     * Passo 2 do fluxo "Esqueci minha senha" - confere e-mail (de novo, por segurança -
+     * defesa em profundidade caso alguém chame isso direto sem passar pelo passo 1) e a
+     * senha atual, troca pela nova e desliga {@code precisaTrocarSenha} (é isso que libera
+     * o login de verdade - ver {@link #login}). A pessoa nunca pode escolher a própria
+     * senha padrão como senha nova, senão "nunca entra com a senha padrão" deixaria de
+     * valer se alguém escolhesse isso de propósito.
      */
     @Transactional
     public void trocarSenha(TrocarSenhaRequest request) {
-        Pessoa pessoa = buscarPessoaPorCpfEEmail(request.cpf(), request.email());
+        Pessoa pessoa = buscarPessoaPorEmail(request.email());
 
         if (pessoa.getSenhaHash() == null || !passwordEncoder.matches(request.senhaAtual(), pessoa.getSenhaHash())) {
             throw new UnauthorizedException("Senha atual inválida");
@@ -205,15 +202,10 @@ public class AuthService {
         pessoaRepository.save(pessoa);
     }
 
-    private Pessoa buscarPessoaPorCpfEEmail(String cpf, String email) {
-        Pessoa pessoa = pessoaRepository
-                .findByCpf(Cpf.normalizar(cpf))
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "CPF e e-mail não correspondem a nenhuma pessoa cadastrada"));
-        if (pessoa.getEmail() == null || !pessoa.getEmail().equalsIgnoreCase(email.trim())) {
-            throw new ResourceNotFoundException("CPF e e-mail não correspondem a nenhuma pessoa cadastrada");
-        }
-        return pessoa;
+    private Pessoa buscarPessoaPorEmail(String email) {
+        return pessoaRepository
+                .findByEmail(email.trim().toLowerCase())
+                .orElseThrow(() -> new ResourceNotFoundException("Nenhuma pessoa cadastrada com esse e-mail"));
     }
 
     /**

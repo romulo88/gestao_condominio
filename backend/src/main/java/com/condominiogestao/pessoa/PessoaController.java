@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/pessoas")
-@Tag(name = "Pessoas", description = "Identidade compartilhada (nome/cpf/email) - consulta apenas")
+@Tag(name = "Pessoas", description = "Identidade compartilhada (nome/email/telefone) - consulta apenas")
 public class PessoaController {
 
     private final PessoaService service;
@@ -23,13 +23,13 @@ public class PessoaController {
         this.service = service;
     }
 
-    @GetMapping("/buscar-por-cpf")
-    @Operation(summary = "Busca uma pessoa pelo CPF",
+    @GetMapping("/buscar-por-email")
+    @Operation(summary = "Busca uma pessoa pelo e-mail",
             description = "Usado pra reconhecer alguém já cadastrado (ex: aba Funcionário do cadastro de "
-                    + "condomínio) antes de pedir nome/e-mail de novo.")
-    @ApiResponse(responseCode = "404", description = "Nenhuma pessoa com esse CPF",
+                    + "condomínio) antes de pedir nome/telefone de novo.")
+    @ApiResponse(responseCode = "404", description = "Nenhuma pessoa com esse e-mail",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    public PessoaResponse buscarPorCpf(@RequestParam String cpf) {
-        return service.buscarPorCpf(cpf);
+    public PessoaResponse buscarPorEmail(@RequestParam String email) {
+        return service.buscarPorEmail(email);
     }
 }

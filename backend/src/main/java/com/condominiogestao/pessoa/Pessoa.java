@@ -1,6 +1,5 @@
 package com.condominiogestao.pessoa;
 
-import com.condominiogestao.common.Cpf;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -17,11 +16,17 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 /**
- * Identidade da pessoa (nome, cpf, email, senha) - compartilhada entre os papéis que
+ * Identidade da pessoa (nome, email, telefone, senha) - compartilhada entre os papéis que
  * ela pode ter no sistema. {@code Funcionario} e {@code Morador} são extensões 1:1
  * dessa tabela (mesma PK, não herança Java): a mesma pessoa pode ser as duas coisas ao
  * mesmo tempo (ex: síndico que também mora no condomínio), cada papel com sua própria
  * linha em {@code funcionarios}/{@code moradores} apontando pra cá.
+ *
+ * <p>Pedido do Romulo (adequação à LGPD, v177): não guarda mais CPF - o campo saiu da
+ * tabela (ver migration V26). {@code email} é o identificador de login/"esqueci minha
+ * senha"/deduplicação de cadastro (papel que o CPF tinha antes) - único no banco (índice
+ * parcial, ver V26), exceto pra quem não tem nenhum (funcionário sem perfil pode ficar
+ * sem e-mail).
  */
 @Entity
 @Table(name = "pessoas")
@@ -38,12 +43,14 @@ public class Pessoa {
     @Column(columnDefinition = "TEXT")
     private String nome;
 
-    /** Login (para quem tiver papel de funcionário com perfil, ou de morador). */
-    @Column(columnDefinition = "TEXT")
-    private String cpf;
-
     @Column(columnDefinition = "TEXT")
     private String email;
+
+    /** Opcional pros dois papéis (funcionário e morador) - pedido do Romulo. Guardado só
+     * com dígitos (sem máscara) - a máscara é responsabilidade da tela (ver
+     * `formatarTelefone` no frontend), mesmo padrão que o CPF já seguia antes de sair. */
+    @Column(columnDefinition = "TEXT")
+    private String telefone;
 
     /** bcrypt/argon2 - nunca texto puro. */
     @Column(name = "senha_hash", columnDefinition = "TEXT")
@@ -78,11 +85,16 @@ public class Pessoa {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    /** Rede de segurança: garante que o CPF fica salvo sem pontuação mesmo que algum
-     * chamador esqueça de normalizar antes (ver {@link Cpf#normalizar}). */
+    /** Rede de segurança: garante que o e-mail fica salvo sem espaço e em minúsculas mesmo
+     * que algum chamador esqueça de normalizar antes - é o que faz o login/"esqueci minha
+     * senha" (comparação exata via {@code PessoaRepository.findByEmail}) não depender de
+     * bater maiúscula/minúscula certinho. Mesmo espírito da normalização de CPF que essa
+     * classe tinha antes (v177 - CPF saiu, ver migration V26). */
     @PrePersist
     @PreUpdate
-    private void normalizarCpf() {
-        cpf = Cpf.normalizar(cpf);
+    private void normalizarEmail() {
+        if (email != null) {
+            email = email.trim().toLowerCase();
+        }
     }
 }

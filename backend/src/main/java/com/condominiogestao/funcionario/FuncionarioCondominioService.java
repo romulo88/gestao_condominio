@@ -60,24 +60,21 @@ public class FuncionarioCondominioService {
 
     /** Página da listagem do cadastro de condomínio - pedido do Romulo: "criar uma
      * paginação de 15 registros... a ideia é performance para não listar todos de vez".
-     * Já vem com nome/CPF/e-mail/foto embutidos (ver {@link FuncionarioCondominioResumoResponse})
+     * Já vem com nome/e-mail/telefone/foto embutidos (ver {@link FuncionarioCondominioResumoResponse})
      * - a tela batia um {@code GET /api/funcionarios/{id}} por linha antes disso, só pra
      * pegar esses mesmos dados (N+1 de verdade: 1 chamada da lista + uma por funcionário -
      * com 15 por página, no máximo 15 dessas, mas o ideal mesmo é zero, e {@code
      * pessoaFotoService.buscarUrls} já resolve as fotos da página inteira numa consulta
      * só, não uma por pessoa). {@code busca} é o texto livre da caixa de busca da tela -
-     * bate por nome (contém, sem diferenciar maiúscula/minúscula) OU pelos dígitos do CPF
-     * (contém), o mesmo critério que a tela já usava do lado do cliente antes de existir
-     * paginação de verdade. */
+     * bate por nome (contém, sem diferenciar maiúscula/minúscula) - CPF saiu do sistema
+     * (v177/LGPD). */
     public PaginaResponse<FuncionarioCondominioResumoResponse> listarPaginaPorCondominio(
             Integer condominioId, String busca, int pagina, int tamanho) {
         String buscaNormalizada = busca == null ? "" : busca.trim();
         String buscaNome = buscaNormalizada.isEmpty() ? null : "%" + buscaNormalizada.toLowerCase() + "%";
-        String buscaDigitos = buscaNormalizada.replaceAll("[^0-9]", "");
-        String buscaCpf = buscaDigitos.isEmpty() ? null : "%" + buscaDigitos + "%";
 
         Page<FuncionarioCondominio> paginaVinculos = repository.buscarPorCondominio(
-                condominioId, buscaNome, buscaCpf, PageRequest.of(Math.max(pagina, 0), Math.min(Math.max(tamanho, 1), 100)));
+                condominioId, buscaNome, PageRequest.of(Math.max(pagina, 0), Math.min(Math.max(tamanho, 1), 100)));
 
         List<Integer> idsFuncionarios = paginaVinculos.getContent().stream()
                 .map(vinculo -> vinculo.getFuncionario().getId())
@@ -137,6 +134,7 @@ public class FuncionarioCondominioService {
 
         vinculo.setPerfil(request.perfil());
         vinculo.setFuncao(request.funcao());
+        vinculo.getFuncionario().getPessoa().setTelefone(request.telefone());
         // Email mora em Pessoa (identidade compartilhada), não no vínculo - mesmo padrão
         // já usado em MoradorCondominioService.atualizar. Só sobrescreve quando um valor
         // de verdade foi informado - em branco não apaga o e-mail que já existia (a mesma

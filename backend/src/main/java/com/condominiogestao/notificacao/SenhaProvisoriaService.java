@@ -51,7 +51,7 @@ public class SenhaProvisoriaService {
         pessoa.setPrecisaTrocarSenha(true);
 
         if (temEmail(pessoa)) {
-            EmailTemplates.CorpoEmail corpo = EmailTemplates.trocarSenha(pessoa.getCpf(), pessoa.getEmail(), codigo);
+            EmailTemplates.CorpoEmail corpo = EmailTemplates.trocarSenha(pessoa.getEmail(), codigo);
             emailService.enviar(pessoa.getEmail(), "Trocar senha", corpo);
         }
     }
@@ -60,7 +60,7 @@ public class SenhaProvisoriaService {
     public void prepararPrimeiroAcesso(Pessoa pessoa) {
         descartarSenhaAtual(pessoa);
         if (temEmail(pessoa)) {
-            EmailTemplates.CorpoEmail corpo = EmailTemplates.contaCriada(pessoa.getCpf(), pessoa.getEmail());
+            EmailTemplates.CorpoEmail corpo = EmailTemplates.contaCriada(pessoa.getEmail());
             emailService.enviar(pessoa.getEmail(), "Conta criada", corpo);
         }
     }
@@ -70,7 +70,7 @@ public class SenhaProvisoriaService {
     public void resetarEAvisar(Pessoa pessoa) {
         descartarSenhaAtual(pessoa);
         if (temEmail(pessoa)) {
-            EmailTemplates.CorpoEmail corpo = EmailTemplates.senhaResetada(pessoa.getCpf(), pessoa.getEmail());
+            EmailTemplates.CorpoEmail corpo = EmailTemplates.senhaResetada(pessoa.getEmail());
             emailService.enviar(pessoa.getEmail(), "Senha resetada", corpo);
         }
     }

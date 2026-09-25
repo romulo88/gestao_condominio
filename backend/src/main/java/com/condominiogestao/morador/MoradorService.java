@@ -1,7 +1,6 @@
 package com.condominiogestao.morador;
 
 import com.condominiogestao.common.ConflictException;
-import com.condominiogestao.common.Cpf;
 import com.condominiogestao.common.ResourceNotFoundException;
 import com.condominiogestao.morador.dto.MoradorCreateRequest;
 import com.condominiogestao.morador.dto.MoradorResponse;
@@ -40,30 +39,32 @@ public class MoradorService {
         return MoradorResponse.from(buscarEntidadePorId(id));
     }
 
-    /** 404 quando o CPF existe como {@link Pessoa} mas ainda não tem papel de morador
+    /** 404 quando o e-mail existe como {@link Pessoa} mas ainda não tem papel de morador
      * (ou não existe pessoa nenhuma) - usado pra evitar tentar recriar um morador que já
      * existe (aba Moradores do cadastro de condomínio). */
-    public MoradorResponse buscarPorCpf(String cpf) {
+    public MoradorResponse buscarPorEmail(String email) {
         return repository
-                .findByPessoaCpf(Cpf.normalizar(cpf))
+                .findByPessoaEmail(email.trim().toLowerCase())
                 .map(MoradorResponse::from)
-                .orElseThrow(() -> new ResourceNotFoundException("Nenhum morador com o CPF " + cpf));
+                .orElseThrow(() -> new ResourceNotFoundException("Nenhum morador com o e-mail " + email));
     }
 
     /**
-     * Reaproveita a {@link Pessoa} existente com esse CPF (ex: já é funcionário e agora
-     * também vira morador) ou cria uma nova. E-mail é obrigatório pro papel de morador
-     * (item 3.4): se a pessoa já existir sem e-mail, preenche com o informado aqui; se
-     * já tiver um, o e-mail existente prevalece.
+     * Reaproveita a {@link Pessoa} existente com esse e-mail (ex: já é funcionário e agora
+     * também vira morador) ou cria uma nova - pedido do Romulo (LGPD, v177): e-mail
+     * assumiu o papel que CPF tinha antes como identificador de deduplicação. E-mail é
+     * obrigatório pro papel de morador (item 3.4, continua valendo). Se a pessoa já
+     * existir sem telefone cadastrado, preenche com o informado aqui; se já tiver um, o
+     * telefone existente prevalece (mesmo padrão que e-mail já seguia antes).
      */
     @Transactional
     public MoradorResponse criar(MoradorCreateRequest request) {
-        String cpf = Cpf.normalizar(request.cpf());
-        Pessoa pessoa = pessoaRepository.findByCpf(cpf).orElseGet(() -> {
+        String email = request.email().trim().toLowerCase();
+        Pessoa pessoa = pessoaRepository.findByEmail(email).orElseGet(() -> {
             Pessoa nova = new Pessoa();
             nova.setNome(request.nome());
-            nova.setCpf(cpf);
-            nova.setEmail(request.email());
+            nova.setEmail(email);
+            nova.setTelefone(request.telefone());
             // Pedido do Romulo: manda um código temporário pro e-mail em vez de nascer com
             // a senha padrão pública - mesmo mecanismo de "Esqueci minha senha" (ver
             // SenhaProvisoriaService). Só se aplica a Pessoa GENUINAMENTE nova - quem já
@@ -72,12 +73,12 @@ public class MoradorService {
             return pessoaRepository.save(nova);
         });
 
-        if (pessoa.getEmail() == null) {
-            pessoa.setEmail(request.email());
+        if (pessoa.getTelefone() == null && request.telefone() != null) {
+            pessoa.setTelefone(request.telefone());
         }
 
         if (repository.existsById(pessoa.getId())) {
-            throw new ConflictException("Essa pessoa (CPF " + request.cpf() + ") já é morador");
+            throw new ConflictException("Essa pessoa já é morador");
         }
 
         Morador morador = new Morador();

@@ -2,7 +2,6 @@ package com.condominiogestao.demanda;
 
 import com.condominiogestao.common.Autorizacao;
 import com.condominiogestao.common.ConflictException;
-import com.condominiogestao.common.Cpf;
 import com.condominiogestao.common.ForbiddenException;
 import com.condominiogestao.common.ResourceNotFoundException;
 import com.condominiogestao.common.Situacao;
@@ -16,7 +15,6 @@ import com.condominiogestao.funcionario.FuncionarioCondominioRepository;
 import com.condominiogestao.funcionario.FuncionarioPerfil;
 import com.condominiogestao.funcionario.FuncionarioRepository;
 import com.condominiogestao.morador.Morador;
-import com.condominiogestao.morador.MoradorCondominio;
 import com.condominiogestao.morador.MoradorCondominioRepository;
 import com.condominiogestao.morador.MoradorRepository;
 import com.condominiogestao.security.ContextoAutenticado;
@@ -65,12 +63,12 @@ public class DemandaAcessoSigilosoService {
     }
 
     /** Todo morador com vínculo ATIVO, e todo funcionário com vínculo ATIVO e login (perfil
-     * preenchido) nesse condomínio - alimenta a combo de busca do "Gerenciar acesso" (nome +
-     * unidade/perfil), em vez da pessoa precisar decorar o CPF de quem quer indicar.
-     * Funcionário SEM perfil não tem como abrir o sistema pra ver a demanda mesmo tendo
-     * acesso concedido (pedido do Romulo: "não faz sentido colocar uma pessoa sem perfil na
-     * listagem") - morador não tem esse filtro porque já sempre loga como morador, não
-     * existe "morador sem perfil". Mesma autorização de {@link #listar}. */
+     * preenchido) nesse condomínio - alimenta a combo de busca do "Gerenciar acesso" (por
+     * nome), devolvendo o id de cada um pra conceder acesso. Funcionário SEM perfil não tem
+     * como abrir o sistema pra ver a demanda mesmo tendo acesso concedido (pedido do Romulo:
+     * "não faz sentido colocar uma pessoa sem perfil na listagem") - morador não tem esse
+     * filtro porque já sempre loga como morador, não existe "morador sem perfil". Mesma
+     * autorização de {@link #listar}. */
     public List<CandidatoAcessoResponse> listarCandidatos(ContextoAutenticado contexto, Integer demandaId) {
         Demanda demanda = buscarDemanda(demandaId);
         exigirPodeGerenciar(contexto, demanda);
@@ -81,10 +79,11 @@ public class DemandaAcessoSigilosoService {
                 .filter(vinculo -> vinculo.getSituacao() == Situacao.ativo
                         && vinculo.getMorador().getSituacao() == Situacao.ativo)
                 .forEach(vinculo -> candidatos.add(new CandidatoAcessoResponse(
-                        vinculo.getMorador().getCpf(),
+                        vinculo.getMorador().getId(),
                         vinculo.getMorador().getNome(),
                         "morador",
-                        formatarUnidade(vinculo),
+                        vinculo.getNumeroUnidade(),
+                        vinculo.getBloco() != null ? vinculo.getBloco().getNome() : null,
                         null,
                         null)));
 
@@ -93,9 +92,10 @@ public class DemandaAcessoSigilosoService {
                         && vinculo.getFuncionario().getSituacao() == Situacao.ativo
                         && vinculo.getPerfil() != null)
                 .forEach(vinculo -> candidatos.add(new CandidatoAcessoResponse(
-                        vinculo.getFuncionario().getCpf(),
+                        vinculo.getFuncionario().getId(),
                         vinculo.getFuncionario().getNome(),
                         "funcionario",
+                        null,
                         null,
                         vinculo.getPerfil(),
                         vinculo.getFuncao())));
@@ -125,17 +125,13 @@ public class DemandaAcessoSigilosoService {
                 .toList();
     }
 
-    private String formatarUnidade(MoradorCondominio vinculo) {
-        return vinculo.getBloco() != null
-                ? vinculo.getBloco().getNome() + " - " + vinculo.getNumeroUnidade()
-                : vinculo.getNumeroUnidade();
-    }
-
     /**
-     * Concede pelo CPF - se a pessoa tiver vínculo ativo como morador E como funcionário
-     * nesse condomínio ao mesmo tempo, ganha acesso nos dois papéis (é a mesma pessoa;
-     * não faz sentido perguntar "como qual papel"). Pula silenciosamente quem já tinha
-     * acesso; só falha se a pessoa não tiver NENHUM vínculo ativo com o condomínio.
+     * Concede pelo id da Pessoa - se ela tiver vínculo ativo como morador E como
+     * funcionário nesse condomínio ao mesmo tempo, ganha acesso nos dois papéis (é a
+     * mesma pessoa - {@code Morador}/{@code Funcionario} compartilham a mesma PK de
+     * {@code Pessoa}, ver {@code CandidatoAcessoResponse.pessoaId}; não faz sentido
+     * perguntar "como qual papel"). Pula silenciosamente quem já tinha acesso; só falha
+     * se a pessoa não tiver NENHUM vínculo ativo com o condomínio.
      */
     @Transactional
     public List<DemandaAcessoSigilosoResponse> conceder(
@@ -147,11 +143,11 @@ public class DemandaAcessoSigilosoService {
             throw new ConflictException("Essa demanda não é sigilosa - não tem sentido conceder acesso a mais ninguém");
         }
 
-        String cpf = Cpf.normalizar(request.cpf());
+        Integer pessoaId = request.pessoaId();
         Integer condominioId = demanda.getCondominio().getId();
         List<DemandaAcessoSigiloso> concedidos = new ArrayList<>();
 
-        moradorRepository.findByPessoaCpf(cpf).ifPresent(morador -> {
+        moradorRepository.findById(pessoaId).ifPresent(morador -> {
             boolean vinculoAtivo = moradorCondominioRepository.findByMoradorId(morador.getId()).stream()
                     .anyMatch(v -> v.getCondominio().getId().equals(condominioId) && v.getSituacao() == Situacao.ativo);
             if (vinculoAtivo && !repository.existsByDemandaIdAndMoradorId(demandaId, morador.getId())) {
@@ -159,7 +155,7 @@ public class DemandaAcessoSigilosoService {
             }
         });
 
-        funcionarioRepository.findByPessoaCpf(cpf).ifPresent(funcionario -> {
+        funcionarioRepository.findById(pessoaId).ifPresent(funcionario -> {
             boolean vinculoAtivo = funcionarioCondominioRepository.findByFuncionarioId(funcionario.getId()).stream()
                     .anyMatch(v -> v.getCondominio().getId().equals(condominioId) && v.getSituacao() == Situacao.ativo);
             if (vinculoAtivo && !repository.existsByDemandaIdAndFuncionarioId(demandaId, funcionario.getId())) {
@@ -169,7 +165,7 @@ public class DemandaAcessoSigilosoService {
 
         if (concedidos.isEmpty()) {
             throw new ResourceNotFoundException(
-                    "Nenhuma pessoa com o CPF " + request.cpf()
+                    "Nenhuma pessoa com id " + pessoaId
                             + " tem vínculo ativo (morador ou funcionário) com esse condomínio, ou já tinha acesso");
         }
 

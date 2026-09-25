@@ -4,7 +4,6 @@ import com.condominiogestao.administrador.dto.AdministradorCreateRequest;
 import com.condominiogestao.administrador.dto.AdministradorResponse;
 import com.condominiogestao.common.Autorizacao;
 import com.condominiogestao.common.ConflictException;
-import com.condominiogestao.common.Cpf;
 import com.condominiogestao.common.ResourceNotFoundException;
 import com.condominiogestao.pessoa.Pessoa;
 import com.condominiogestao.pessoa.PessoaRepository;
@@ -55,12 +54,11 @@ public class AdministradorService {
     public AdministradorResponse criar(ContextoAutenticado contexto, AdministradorCreateRequest request) {
         Autorizacao.exigirAdministrador(contexto);
 
-        String cpf = Cpf.normalizar(request.cpf());
-        Pessoa pessoa = pessoaRepository.findByCpf(cpf).orElseGet(() -> {
+        String email = request.email().trim().toLowerCase();
+        Pessoa pessoa = pessoaRepository.findByEmail(email).orElseGet(() -> {
             Pessoa nova = new Pessoa();
             nova.setNome(request.nome());
-            nova.setCpf(cpf);
-            nova.setEmail(request.email());
+            nova.setEmail(email);
             // Nasce com a senha padrão, marcada pra trocar no primeiro acesso - ver
             // AuthService (fluxo de "Esqueci minha senha").
             nova.setSenhaHash(passwordEncoder.encode(senhaPadrao));
@@ -68,12 +66,8 @@ public class AdministradorService {
             return pessoaRepository.save(nova);
         });
 
-        if (pessoa.getEmail() == null && request.email() != null) {
-            pessoa.setEmail(request.email());
-        }
-
         if (repository.existsById(pessoa.getId())) {
-            throw new ConflictException("Essa pessoa (CPF " + cpf + ") já é administrador");
+            throw new ConflictException("Essa pessoa já é administrador");
         }
 
         Administrador administrador = new Administrador();

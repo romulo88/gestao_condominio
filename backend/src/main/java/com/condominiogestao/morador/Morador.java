@@ -23,8 +23,8 @@ import org.hibernate.annotations.UpdateTimestamp;
  * Papel de morador de uma {@link Pessoa} - extensão 1:1 (mesma PK, via
  * {@code @MapsId}), não herança Java: a mesma pessoa pode ter também um papel de
  * {@code Funcionario} ao mesmo tempo (ex: síndico que também mora no condomínio). Nome,
- * cpf, email e senha ficam em {@link Pessoa} - usar {@link #getNome()}/{@link #getCpf()}
- * /{@link #getEmail()} como atalho.
+ * email, telefone e senha ficam em {@link Pessoa} - usar {@link #getNome()}/
+ * {@link #getEmail()}/{@link #getTelefone()} como atalho.
  */
 @Entity
 @Table(name = "moradores")
@@ -62,11 +62,11 @@ public class Morador {
         return pessoa.getNome();
     }
 
-    public String getCpf() {
-        return pessoa.getCpf();
-    }
-
     public String getEmail() {
         return pessoa.getEmail();
+    }
+
+    public String getTelefone() {
+        return pessoa.getTelefone();
     }
 }

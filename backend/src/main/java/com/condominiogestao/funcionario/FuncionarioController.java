@@ -46,11 +46,11 @@ public class FuncionarioController {
         return service.buscarPorId(id);
     }
 
-    @GetMapping("/buscar-por-cpf")
-    @Operation(summary = "Busca um funcionário pelo CPF",
-            description = "404 se o CPF não tem papel de funcionário ainda (mesmo que já exista como pessoa).")
-    public FuncionarioResponse buscarPorCpf(@RequestParam String cpf) {
-        return service.buscarPorCpf(cpf);
+    @GetMapping("/buscar-por-email")
+    @Operation(summary = "Busca um funcionário pelo e-mail",
+            description = "404 se o e-mail não tem papel de funcionário ainda (mesmo que já exista como pessoa).")
+    public FuncionarioResponse buscarPorEmail(@RequestParam String email) {
+        return service.buscarPorEmail(email);
     }
 
     @PostMapping

@@ -39,11 +39,11 @@ public class MoradorController {
         return service.buscarPorId(id);
     }
 
-    @GetMapping("/buscar-por-cpf")
-    @Operation(summary = "Busca um morador pelo CPF",
-            description = "404 se o CPF não tem papel de morador ainda (mesmo que já exista como pessoa).")
-    public MoradorResponse buscarPorCpf(@RequestParam String cpf) {
-        return service.buscarPorCpf(cpf);
+    @GetMapping("/buscar-por-email")
+    @Operation(summary = "Busca um morador pelo e-mail",
+            description = "404 se o e-mail não tem papel de morador ainda (mesmo que já exista como pessoa).")
+    public MoradorResponse buscarPorEmail(@RequestParam String email) {
+        return service.buscarPorEmail(email);
     }
 
     @PostMapping

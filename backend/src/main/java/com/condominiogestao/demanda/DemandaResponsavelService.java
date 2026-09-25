@@ -1,7 +1,6 @@
 package com.condominiogestao.demanda;
 
 import com.condominiogestao.common.ConflictException;
-import com.condominiogestao.common.Cpf;
 import com.condominiogestao.common.ForbiddenException;
 import com.condominiogestao.common.InvalidRequestException;
 import com.condominiogestao.common.ResourceNotFoundException;
@@ -25,8 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Atribuição de um ou mais funcionários como responsáveis por uma demanda - pedido do
- * Romulo, mesmo espírito do "Gerenciar acesso" sigiloso (item 4.8): busca por CPF/nome
- * numa combo, atribui, remove. Qualquer funcionário do condomínio pode atribuir (não só
+ * Romulo, mesmo espírito do "Gerenciar acesso" sigiloso (item 4.8): busca por nome numa
+ * combo, atribui, remove. Qualquer funcionário do condomínio pode atribuir (não só
  * síndico/sub-síndico - mais amplo que o sigilo de propósito, já que atribuir
  * responsabilidade é uma ação operacional do dia a dia, não uma questão de privacidade).
  */
@@ -68,15 +67,15 @@ public class DemandaResponsavelService {
                 .collect(Collectors.toMap(v -> v.getFuncionario().getId(), Function.identity()));
     }
 
-    /** Funcionários ativos do condomínio da demanda - alimenta a combo de busca (nome +
-     * CPF), em vez de precisar decorar o CPF de quem vai atribuir. */
+    /** Funcionários ativos do condomínio da demanda - alimenta a combo de busca (por
+     * nome), devolvendo o id de cada um pra atribuir. */
     public List<CandidatoResponsavelResponse> listarCandidatos(ContextoAutenticado contexto, Integer demandaId) {
         Demanda demanda = buscarDemanda(demandaId);
         exigirFuncionarioDoCondominio(contexto, demanda);
         return funcionarioCondominioRepository.findByCondominioId(demanda.getCondominio().getId()).stream()
                 .filter(v -> v.getSituacao() == Situacao.ativo && v.getFuncionario().getSituacao() == Situacao.ativo)
                 .map(v -> new CandidatoResponsavelResponse(
-                        v.getFuncionario().getCpf(), v.getFuncionario().getNome(), v.getPerfil(), v.getFuncao()))
+                        v.getFuncionario().getId(), v.getFuncionario().getNome(), v.getPerfil(), v.getFuncao()))
                 .sorted(Comparator.comparing(CandidatoResponsavelResponse::nome))
                 .toList();
     }
@@ -87,10 +86,9 @@ public class DemandaResponsavelService {
         Demanda demanda = buscarDemanda(demandaId);
         exigirFuncionarioDoCondominio(contexto, demanda);
 
-        String cpf = Cpf.normalizar(request.cpf());
         Funcionario funcionario = funcionarioRepository
-                .findByPessoaCpf(cpf)
-                .orElseThrow(() -> new ResourceNotFoundException("Nenhum funcionário com o CPF " + request.cpf()));
+                .findById(request.funcionarioId())
+                .orElseThrow(() -> new ResourceNotFoundException("Funcionário não encontrado: " + request.funcionarioId()));
 
         FuncionarioCondominio vinculo = funcionarioCondominioRepository.findByFuncionarioId(funcionario.getId()).stream()
                 .filter(v -> v.getCondominio().getId().equals(demanda.getCondominio().getId())

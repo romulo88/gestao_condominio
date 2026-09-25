@@ -1,6 +1,5 @@
 package com.condominiogestao.pessoa;
 
-import com.condominiogestao.common.Cpf;
 import com.condominiogestao.common.ResourceNotFoundException;
 import com.condominiogestao.pessoa.dto.PessoaResponse;
 import org.springframework.stereotype.Service;
@@ -16,12 +15,12 @@ public class PessoaService {
         this.repository = repository;
     }
 
-    /** 404 quando o CPF não corresponde a nenhuma pessoa cadastrada ainda. */
-    public PessoaResponse buscarPorCpf(String cpf) {
-        String normalizado = Cpf.normalizar(cpf);
+    /** 404 quando o e-mail não corresponde a nenhuma pessoa cadastrada ainda. */
+    public PessoaResponse buscarPorEmail(String email) {
+        String normalizado = email.trim().toLowerCase();
         return repository
-                .findByCpf(normalizado)
+                .findByEmail(normalizado)
                 .map(PessoaResponse::from)
-                .orElseThrow(() -> new ResourceNotFoundException("Nenhuma pessoa com o CPF " + normalizado));
+                .orElseThrow(() -> new ResourceNotFoundException("Nenhuma pessoa com o e-mail " + normalizado));
     }
 }

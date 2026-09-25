@@ -9,7 +9,7 @@ import com.condominiogestao.funcionario.FuncionarioPerfil;
  * não tem) - {@code vinculo} pode ser {@code null} num caso raro (funcionário sem vínculo
  * ativo nesse condomínio no momento em que a lista é montada), aí os dois ficam nulos. */
 public record DemandaResponsavelResponse(
-        Integer id, Integer demandaId, Integer funcionarioId, String nome, String cpf, FuncionarioPerfil perfil, String funcao) {
+        Integer id, Integer demandaId, Integer funcionarioId, String nome, FuncionarioPerfil perfil, String funcao) {
 
     public static DemandaResponsavelResponse from(DemandaResponsavel atribuicao, FuncionarioCondominio vinculo) {
         return new DemandaResponsavelResponse(
@@ -17,7 +17,6 @@ public record DemandaResponsavelResponse(
                 atribuicao.getDemanda().getId(),
                 atribuicao.getFuncionario().getId(),
                 atribuicao.getFuncionario().getNome(),
-                atribuicao.getFuncionario().getCpf(),
                 vinculo != null ? vinculo.getPerfil() : null,
                 vinculo != null ? vinculo.getFuncao() : null);
     }

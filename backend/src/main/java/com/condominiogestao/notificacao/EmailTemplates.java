@@ -176,21 +176,14 @@ public final class EmailTemplates {
 
     /** Pedido do Romulo: e-mail do fluxo "Esqueci minha senha" - mesmo padrão visual dos
      * e-mails de demanda, título "Trocar senha" (aqui em azul, não é nem aprovação nem
-     * reprovação). Mostra CPF e e-mail usados na solicitação (confirma que é a conta certa)
-     * e o código temporário em destaque, seguido da instrução de uso. {@code codigo} não
+     * reprovação). Mostra o e-mail usado na solicitação (confirma que é a conta certa) e
+     * o código temporário em destaque, seguido da instrução de uso. {@code codigo} não
      * precisa de {@code htmlEscape} - é sempre numérico, gerado pelo próprio sistema (ver
      * {@code AuthService.esqueciSenha}), nunca texto livre digitado por alguém. */
-    public static CorpoEmail trocarSenha(String cpf, String email, String codigo) {
+    public static CorpoEmail trocarSenha(String email, String codigo) {
         String corDestaque = "#2563eb";
 
-        List<String[]> linhas = new ArrayList<>();
-        linhas.add(new String[] {"CPF", HtmlUtils.htmlEscape(cpf)});
-        linhas.add(new String[] {"E-mail", HtmlUtils.htmlEscape(email)});
-
-        StringBuilder tabelaHtml = new StringBuilder();
-        for (int i = 0; i < linhas.size(); i++) {
-            tabelaHtml.append(linha(linhas.get(i)[0], linhas.get(i)[1], i < linhas.size() - 1));
-        }
+        String tabelaHtml = linha("E-mail", HtmlUtils.htmlEscape(email), false);
 
         String codigoHtml = "<div style=\"margin:20px 0;padding:16px;background-color:#eff6ff;"
                 + "border-radius:8px;text-align:center;\">"
@@ -199,19 +192,18 @@ public final class EmailTemplates {
 
         String instrucoesHtml = "<p style=\"margin:0;color:#334155;font-size:14px;line-height:1.6;text-align:justify;\">"
                 + "Use o código acima como sua <strong>senha atual</strong> na tela de login, em "
-                + "\"Esqueceu sua senha?\", informando de novo o CPF e o e-mail acima - em seguida, "
-                + "escolha sua senha nova. Se você não pediu essa troca, sua senha foi alterada mesmo "
-                + "assim - avise a administração do seu condomínio o quanto antes.</p>";
+                + "\"Esqueceu sua senha?\", informando de novo o e-mail acima - em seguida, escolha sua "
+                + "senha nova. Se você não pediu essa troca, sua senha foi alterada mesmo assim - avise "
+                + "a administração do seu condomínio o quanto antes.</p>";
 
         String texto = "Este é um e-mail informativo - não é necessário respondê-lo.\n\n"
                 + "Você solicitou a troca de senha da sua conta no Commander.\n\n"
-                + "CPF: " + cpf + "\n"
                 + "E-mail: " + email + "\n\n"
                 + "Seu código temporário: " + codigo + "\n\n"
                 + "Use o código acima como sua senha atual na tela de login, em \"Esqueceu sua senha?\", "
-                + "informando de novo o CPF e o e-mail acima - em seguida, escolha sua senha nova. Se "
-                + "você não pediu essa troca, sua senha foi alterada mesmo assim - avise a administração "
-                + "do seu condomínio o quanto antes.\n\n"
+                + "informando de novo o e-mail acima - em seguida, escolha sua senha nova. Se você não "
+                + "pediu essa troca, sua senha foi alterada mesmo assim - avise a administração do seu "
+                + "condomínio o quanto antes.\n\n"
                 + "Acesse o sistema em: " + URL_LOGIN + "\n";
 
         String html = "<!DOCTYPE html>"
@@ -247,16 +239,15 @@ public final class EmailTemplates {
     /** Pedido do Romulo: aviso de cadastro novo (funcionário/morador) - explica que a
      * conta foi criada e o que fazer pra acessar. <b>Não manda nenhum código</b> - ver
      * {@link #senhaResetada}/{@link #semCodigo} pro motivo. */
-    public static CorpoEmail contaCriada(String cpf, String email) {
-        return semCodigo("Conta criada", "Sua conta no Commander foi criada.", cpf, email);
+    public static CorpoEmail contaCriada(String email) {
+        return semCodigo("Conta criada", "Sua conta no Commander foi criada.", email);
     }
 
     /** Pedido do Romulo: aviso do botão "Zerar senha" (síndico/sub-síndico/administrador
      * resetando a senha de alguém que esqueceu). Mesmo motivo de {@link #contaCriada} pra
      * não mandar código - ver {@link #semCodigo}. */
-    public static CorpoEmail senhaResetada(String cpf, String email) {
-        return semCodigo(
-                "Senha resetada", "Sua senha foi resetada por um administrador do seu condomínio.", cpf, email);
+    public static CorpoEmail senhaResetada(String email) {
+        return semCodigo("Senha resetada", "Sua senha foi resetada por um administrador do seu condomínio.", email);
     }
 
     /** Base de {@link #contaCriada}/{@link #senhaResetada} - avisa que a pessoa precisa
@@ -268,24 +259,16 @@ public final class EmailTemplates {
      * direto (o login já bloqueia antes de checar a senha), então ela SEMPRE vai precisar
      * passar por "Esqueci minha senha" de qualquer jeito - e aí o código de lá que vale, não
      * este. Por isso este e-mail só orienta a pessoa a ir direto pra "Esqueci minha senha". */
-    private static CorpoEmail semCodigo(String titulo, String introducao, String cpf, String email) {
+    private static CorpoEmail semCodigo(String titulo, String introducao, String email) {
         String corDestaque = "#2563eb";
 
-        List<String[]> linhas = new ArrayList<>();
-        linhas.add(new String[] {"CPF", HtmlUtils.htmlEscape(cpf)});
-        linhas.add(new String[] {"E-mail", HtmlUtils.htmlEscape(email)});
-
-        StringBuilder tabelaHtml = new StringBuilder();
-        for (int i = 0; i < linhas.size(); i++) {
-            tabelaHtml.append(linha(linhas.get(i)[0], linhas.get(i)[1], i < linhas.size() - 1));
-        }
+        String tabelaHtml = linha("E-mail", HtmlUtils.htmlEscape(email), false);
 
         String instrucao = "Pra acessar, vá na tela de login e clique em \"Esqueceu sua senha?\". Informe o "
-                + "CPF e o e-mail acima - você vai receber um código por e-mail pra definir sua senha.";
+                + "e-mail acima - você vai receber um código por e-mail pra definir sua senha.";
 
         String texto = "Este é um e-mail informativo - não é necessário respondê-lo.\n\n"
                 + introducao + "\n\n"
-                + "CPF: " + cpf + "\n"
                 + "E-mail: " + email + "\n\n"
                 + instrucao + "\n\n"
                 + "Acesse o sistema em: " + URL_LOGIN + "\n";

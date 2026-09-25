@@ -1,6 +1,5 @@
 package com.condominiogestao.mensagemprivada;
 
-import com.condominiogestao.common.Cpf;
 import com.condominiogestao.common.ForbiddenException;
 import com.condominiogestao.common.InvalidRequestException;
 import com.condominiogestao.common.PaginaResponse;
@@ -84,14 +83,14 @@ public class ConversaPrivadaService {
     }
 
     /** Funcionários COM LOGIN (perfil preenchido) e ativos do condomínio de quem está
-     * logado - alimenta a combo de busca de destinatário (nome + CPF), mesmo espírito de
+     * logado - alimenta a combo de busca de destinatário (por nome), mesmo espírito de
      * {@code DemandaResponsavelService.listarCandidatos}, com o filtro extra de perfil. */
     public List<CandidatoDestinatarioResponse> listarCandidatos(ContextoAutenticado contexto) {
         return funcionarioCondominioRepository.findByCondominioId(contexto.condominioId()).stream()
                 .filter(v -> v.getPerfil() != null
                         && v.getSituacao() == Situacao.ativo
                         && v.getFuncionario().getSituacao() == Situacao.ativo)
-                .map(v -> new CandidatoDestinatarioResponse(v.getFuncionario().getCpf(), v.getFuncionario().getNome(), v.getPerfil()))
+                .map(v -> new CandidatoDestinatarioResponse(v.getFuncionario().getId(), v.getFuncionario().getNome(), v.getPerfil()))
                 .sorted(Comparator.comparing(CandidatoDestinatarioResponse::nome))
                 .toList();
     }
@@ -181,11 +180,8 @@ public class ConversaPrivadaService {
                 .findById(contexto.condominioId())
                 .orElseThrow(() -> new ResourceNotFoundException("Condomínio não encontrado: " + contexto.condominioId()));
 
-        Set<String> cpfsUnicos = new LinkedHashSet<>();
-        for (String cpf : request.destinatariosCpf()) {
-            cpfsUnicos.add(Cpf.normalizar(cpf));
-        }
-        List<Funcionario> destinatarios = cpfsUnicos.stream().map(this::buscarDestinatarioValido).toList();
+        Set<Integer> idsUnicos = new LinkedHashSet<>(request.destinatariosId());
+        List<Funcionario> destinatarios = idsUnicos.stream().map(this::buscarDestinatarioValido).toList();
 
         ConversaPrivada conversa = new ConversaPrivada();
         conversa.setCondominio(condominio);
@@ -385,17 +381,17 @@ public class ConversaPrivadaService {
         }
     }
 
-    private Funcionario buscarDestinatarioValido(String cpf) {
+    private Funcionario buscarDestinatarioValido(Integer funcionarioId) {
         Funcionario funcionario = funcionarioRepository
-                .findByPessoaCpf(cpf)
-                .orElseThrow(() -> new ResourceNotFoundException("Nenhum funcionário com o CPF " + cpf));
+                .findById(funcionarioId)
+                .orElseThrow(() -> new ResourceNotFoundException("Funcionário não encontrado: " + funcionarioId));
         boolean elegivel = funcionarioCondominioRepository.findByFuncionarioId(funcionario.getId()).stream()
                 .anyMatch(v -> v.getPerfil() != null
                         && v.getSituacao() == Situacao.ativo
                         && v.getFuncionario().getSituacao() == Situacao.ativo);
         if (!elegivel) {
             throw new InvalidRequestException(
-                    "O funcionário com CPF " + cpf + " não tem login ativo nesse condomínio");
+                    "O funcionário " + funcionarioId + " não tem login ativo nesse condomínio");
         }
         return funcionario;
     }

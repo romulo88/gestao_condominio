@@ -8,8 +8,8 @@ import java.time.LocalDateTime;
 public record FuncionarioResponse(
         Integer id,
         String nome,
-        String cpf,
         String email,
+        String telefone,
         /** Link assinado (expira em 15min) - null quando a pessoa não tem foto
          * cadastrada. Ver {@code PessoaFotoService}. */
         String fotoUrl,
@@ -21,8 +21,8 @@ public record FuncionarioResponse(
         return new FuncionarioResponse(
                 funcionario.getId(),
                 funcionario.getNome(),
-                funcionario.getCpf(),
                 funcionario.getEmail(),
+                funcionario.getTelefone(),
                 fotoUrl,
                 funcionario.getSituacao(),
                 funcionario.getCreatedAt(),

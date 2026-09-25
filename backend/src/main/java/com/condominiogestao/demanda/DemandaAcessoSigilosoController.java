@@ -59,8 +59,8 @@ public class DemandaAcessoSigilosoController {
 
     @GetMapping("/candidatos")
     @Operation(summary = "Lista as pessoas ativas do condomínio (morador e funcionário) pra escolher quem ganha acesso",
-            description = "Nome + unidade (só morador) + CPF de cada uma - alimenta a combo de busca da tela, "
-                    + "em vez de precisar decorar o CPF. Mesma autorização de GET (listar acesso).")
+            description = "Nome + unidade (só morador) + id de cada uma - alimenta a combo de busca da tela. "
+                    + "Mesma autorização de GET (listar acesso).")
     @ApiResponse(responseCode = "403", description = "Só síndico, sub-síndico, ou quem marcou como sigilosa",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public List<CandidatoAcessoResponse> listarCandidatos(
@@ -70,11 +70,11 @@ public class DemandaAcessoSigilosoController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Concede acesso a uma demanda sigilosa pelo CPF",
+    @Operation(summary = "Concede acesso a uma demanda sigilosa pelo id da pessoa",
             description = "Concede em todos os papéis (morador e/ou funcionário) que a pessoa tiver vínculo ativo com o condomínio.")
     @ApiResponse(responseCode = "403", description = "Só síndico, sub-síndico, ou quem marcou como sigilosa",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    @ApiResponse(responseCode = "404", description = "Ninguém com esse CPF tem vínculo ativo com o condomínio",
+    @ApiResponse(responseCode = "404", description = "Ninguém com esse id tem vínculo ativo com o condomínio",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public List<DemandaAcessoSigilosoResponse> conceder(
             @AuthenticationPrincipal ContextoAutenticado contexto,

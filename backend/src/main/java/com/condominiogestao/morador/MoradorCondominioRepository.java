@@ -24,16 +24,15 @@ public interface MoradorCondominioRepository extends JpaRepository<MoradorCondom
 
     /** Página da listagem do cadastro de condomínio - mesmo espírito e mesma convenção de
      * {@code FuncionarioCondominioRepository.buscarPorCondominio} (pedido do Romulo:
-     * paginação de 15 registros, "a ideia é performance para não listar todos de vez"). */
+     * paginação de 15 registros, "a ideia é performance para não listar todos de vez").
+     * Busca só por nome (CPF saiu do sistema, v177/LGPD). */
     @Query("SELECT mc FROM MoradorCondominio mc "
             + "WHERE mc.condominio.id = :condominioId "
             + "AND (:buscaNome IS NULL "
-            + "     OR LOWER(mc.morador.pessoa.nome) LIKE :buscaNome "
-            + "     OR (:buscaCpf IS NOT NULL AND mc.morador.pessoa.cpf LIKE :buscaCpf)) "
+            + "     OR LOWER(mc.morador.pessoa.nome) LIKE :buscaNome) "
             + "ORDER BY mc.morador.pessoa.nome ASC")
     Page<MoradorCondominio> buscarPorCondominio(
             @Param("condominioId") Integer condominioId,
             @Param("buscaNome") String buscaNome,
-            @Param("buscaCpf") String buscaCpf,
             Pageable pageable);
 }

@@ -61,19 +61,16 @@ public class MoradorCondominioService {
     /** Página da listagem do cadastro de condomínio - mesmo espírito de
      * {@code FuncionarioCondominioService.listarPaginaPorCondominio} (pedido do Romulo:
      * paginação de 15 registros, "a ideia é performance para não listar todos de vez").
-     * Já vem com nome/CPF/e-mail embutidos (ver {@link MoradorCondominioResumoResponse}) -
+     * Já vem com nome/e-mail/telefone embutidos (ver {@link MoradorCondominioResumoResponse}) -
      * elimina o {@code GET /api/moradores/{id}} por linha que a tela batia antes disso.
-     * {@code busca} bate por nome (contém) OU pelos dígitos do CPF (contém), mesmo
-     * critério de sempre. */
+     * {@code busca} bate por nome (contém) - CPF saiu do sistema (v177/LGPD). */
     public PaginaResponse<MoradorCondominioResumoResponse> listarPaginaPorCondominio(
             Integer condominioId, String busca, int pagina, int tamanho) {
         String buscaNormalizada = busca == null ? "" : busca.trim();
         String buscaNome = buscaNormalizada.isEmpty() ? null : "%" + buscaNormalizada.toLowerCase() + "%";
-        String buscaDigitos = buscaNormalizada.replaceAll("[^0-9]", "");
-        String buscaCpf = buscaDigitos.isEmpty() ? null : "%" + buscaDigitos + "%";
 
         Page<MoradorCondominio> paginaVinculos = repository.buscarPorCondominio(
-                condominioId, buscaNome, buscaCpf, PageRequest.of(Math.max(pagina, 0), Math.min(Math.max(tamanho, 1), 100)));
+                condominioId, buscaNome, PageRequest.of(Math.max(pagina, 0), Math.min(Math.max(tamanho, 1), 100)));
 
         return PaginaResponse.from(paginaVinculos.map(MoradorCondominioResumoResponse::from));
     }
@@ -146,6 +143,7 @@ public class MoradorCondominioService {
         Autorizacao.exigirAdministradorParaTrocarEmail(
                 contexto, vinculo.getMorador().getPessoa().getEmail(), request.email());
         vinculo.getMorador().getPessoa().setEmail(request.email());
+        vinculo.getMorador().getPessoa().setTelefone(request.telefone());
 
         return MoradorCondominioResponse.from(repository.save(vinculo));
     }

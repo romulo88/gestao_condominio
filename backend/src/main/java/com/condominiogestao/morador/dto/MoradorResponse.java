@@ -8,8 +8,8 @@ import java.time.LocalDateTime;
 public record MoradorResponse(
         Integer id,
         String nome,
-        String cpf,
         String email,
+        String telefone,
         Situacao situacao,
         LocalDateTime createdAt,
         LocalDateTime updatedAt) {
@@ -18,8 +18,8 @@ public record MoradorResponse(
         return new MoradorResponse(
                 morador.getId(),
                 morador.getNome(),
-                morador.getCpf(),
                 morador.getEmail(),
+                morador.getTelefone(),
                 morador.getSituacao(),
                 morador.getCreatedAt(),
                 morador.getUpdatedAt());

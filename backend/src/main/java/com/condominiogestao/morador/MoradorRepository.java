@@ -5,5 +5,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MoradorRepository extends JpaRepository<Morador, Integer> {
 
-    Optional<Morador> findByPessoaCpf(String cpf);
+    Optional<Morador> findByPessoaEmail(String email);
 }

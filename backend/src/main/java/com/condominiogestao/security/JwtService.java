@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 /**
  * Emite e valida os dois tipos de token do fluxo de login (ver AuthService):
  * <ul>
- *   <li><b>PRE_AUTH</b>: só prova que cpf+senha bateram - de vida curta, só serve pra
+ *   <li><b>PRE_AUTH</b>: só prova que e-mail+senha bateram - de vida curta, só serve pra
  *       chamar {@code POST /api/auth/contexto} e escolher em qual condomínio/papel
  *       entrar. Não dá acesso a nenhum endpoint de domínio.</li>
  *   <li><b>FULL</b>: token de acesso de verdade, já carrega o condomínio/papel

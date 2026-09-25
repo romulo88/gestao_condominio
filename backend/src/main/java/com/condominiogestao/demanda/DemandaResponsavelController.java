@@ -47,7 +47,7 @@ public class DemandaResponsavelController {
 
     @GetMapping("/candidatos")
     @Operation(summary = "Lista os funcionários ativos do condomínio pra escolher quem atribuir",
-            description = "Nome + CPF de cada um - alimenta a combo de busca da tela, em vez de precisar decorar o CPF.")
+            description = "Nome + id de cada um - alimenta a combo de busca da tela.")
     @ApiResponse(responseCode = "403", description = "Só funcionário deste condomínio",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public List<CandidatoResponsavelResponse> listarCandidatos(
@@ -57,10 +57,10 @@ public class DemandaResponsavelController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Atribui um funcionário como responsável pela demanda, pelo CPF")
+    @Operation(summary = "Atribui um funcionário como responsável pela demanda, pelo id")
     @ApiResponse(responseCode = "403", description = "Só funcionário deste condomínio",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    @ApiResponse(responseCode = "404", description = "Nenhum funcionário com esse CPF",
+    @ApiResponse(responseCode = "404", description = "Funcionário não encontrado",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "400", description = "Funcionário sem vínculo ativo com o condomínio dessa demanda",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))

@@ -58,10 +58,6 @@ public class Administrador {
         return pessoa.getNome();
     }
 
-    public String getCpf() {
-        return pessoa.getCpf();
-    }
-
     public String getEmail() {
         return pessoa.getEmail();
     }

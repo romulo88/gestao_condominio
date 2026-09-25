@@ -7,8 +7,7 @@ public record DemandaAcessoSigilosoResponse(
         Integer demandaId,
         /** "morador" ou "funcionario". */
         String tipoPessoa,
-        String nome,
-        String cpf) {
+        String nome) {
 
     public static DemandaAcessoSigilosoResponse from(DemandaAcessoSigiloso acesso) {
         boolean ehMorador = acesso.getMorador() != null;
@@ -16,7 +15,6 @@ public record DemandaAcessoSigilosoResponse(
                 acesso.getId(),
                 acesso.getDemanda().getId(),
                 acesso.getTipoPessoa().name(),
-                ehMorador ? acesso.getMorador().getNome() : acesso.getFuncionario().getNome(),
-                ehMorador ? acesso.getMorador().getCpf() : acesso.getFuncionario().getCpf());
+                ehMorador ? acesso.getMorador().getNome() : acesso.getFuncionario().getNome());
     }
 }

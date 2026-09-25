@@ -27,23 +27,19 @@ public interface FuncionarioCondominioRepository extends JpaRepository<Funcionar
 
     /** Página da listagem do cadastro de condomínio (pedido do Romulo: "criar uma
      * paginação de 15 registros... a ideia é performance para não listar todos de vez").
-     * {@code buscaNome}/{@code buscaCpf} vêm nulos quando não há busca (ver
-     * {@code FuncionarioCondominioService.listarPaginaPorCondominio}, que monta os dois a
-     * partir do MESMO campo de busca da tela - texto vira {@code buscaNome}, os dígitos
-     * dele (se tiver algum) viram {@code buscaCpf}) - {@code :buscaNome IS NULL} sozinho
-     * já cobre "sem busca" (não precisa repetir a checagem pro CPF). Ordenado por nome -
-     * fixo na própria query, não no `Pageable`, pra não depender de o Spring Data
-     * conseguir montar sozinho um `ORDER BY` que navegue `funcionario.pessoa.nome` a
-     * partir de uma query JPQL escrita à mão. */
+     * {@code buscaNome} vem nulo quando não há busca (ver {@code
+     * FuncionarioCondominioService.listarPaginaPorCondominio}) - busca só por nome (CPF
+     * saiu do sistema, v177/LGPD). Ordenado por nome - fixo na própria query, não no
+     * `Pageable`, pra não depender de o Spring Data conseguir montar sozinho um
+     * `ORDER BY` que navegue `funcionario.pessoa.nome` a partir de uma query JPQL escrita
+     * à mão. */
     @Query("SELECT fc FROM FuncionarioCondominio fc "
             + "WHERE fc.condominio.id = :condominioId "
             + "AND (:buscaNome IS NULL "
-            + "     OR LOWER(fc.funcionario.pessoa.nome) LIKE :buscaNome "
-            + "     OR (:buscaCpf IS NOT NULL AND fc.funcionario.pessoa.cpf LIKE :buscaCpf)) "
+            + "     OR LOWER(fc.funcionario.pessoa.nome) LIKE :buscaNome) "
             + "ORDER BY fc.funcionario.pessoa.nome ASC")
     Page<FuncionarioCondominio> buscarPorCondominio(
             @Param("condominioId") Integer condominioId,
             @Param("buscaNome") String buscaNome,
-            @Param("buscaCpf") String buscaCpf,
             Pageable pageable);
 }

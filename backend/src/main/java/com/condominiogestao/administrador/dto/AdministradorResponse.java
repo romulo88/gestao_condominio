@@ -8,7 +8,6 @@ import java.time.LocalDateTime;
 public record AdministradorResponse(
         Integer id,
         String nome,
-        String cpf,
         String email,
         Situacao situacao,
         LocalDateTime createdAt,
@@ -18,7 +17,6 @@ public record AdministradorResponse(
         return new AdministradorResponse(
                 administrador.getId(),
                 administrador.getNome(),
-                administrador.getCpf(),
                 administrador.getEmail(),
                 administrador.getSituacao(),
                 administrador.getCreatedAt(),

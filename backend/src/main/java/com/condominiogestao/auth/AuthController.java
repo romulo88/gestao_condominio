@@ -28,14 +28,14 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Login (CPF/senha), escolha de contexto e senha são públicos (ver {@code @SecurityRequirements}
+ * Login (e-mail/senha), escolha de contexto e senha são públicos (ver {@code @SecurityRequirements}
  * em cada método e o SecurityConfig, que só libera esses 4 caminhos específicos). Os outros dois
  * endpoints daqui (trocar de contexto sem deslogar) exigem token completo, como qualquer outro
  * endpoint do sistema.
  */
 @RestController
 @RequestMapping("/api/auth")
-@Tag(name = "Autenticação", description = "Login (CPF/senha), escolha/troca de contexto (condomínio + papel) e senha")
+@Tag(name = "Autenticação", description = "Login (e-mail/senha), escolha/troca de contexto (condomínio + papel) e senha")
 public class AuthController {
 
     private final AuthService service;
@@ -46,10 +46,10 @@ public class AuthController {
 
     @PostMapping("/login")
     @SecurityRequirements
-    @Operation(summary = "Login por CPF/senha",
+    @Operation(summary = "Login por e-mail/senha",
             description = "Se a pessoa tiver só 1 vínculo ativo (condomínio+papel), já devolve o token completo. "
                     + "Se tiver mais de 1, devolve a lista de contextos + um preAuthToken pra usar em /contexto.")
-    @ApiResponse(responseCode = "401", description = "CPF/senha inválidos, ou sem nenhum vínculo ativo",
+    @ApiResponse(responseCode = "401", description = "E-mail/senha inválidos, ou sem nenhum vínculo ativo",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public LoginResponse login(@Valid @RequestBody LoginRequest request) {
         return service.login(request);
@@ -69,12 +69,11 @@ public class AuthController {
     @PostMapping("/esqueci-senha")
     @SecurityRequirements
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(summary = "Passo 1 de \"Esqueci minha senha\" - confirma CPF + e-mail e manda um código por e-mail",
-            description = "204 se existe uma pessoa com esse CPF e esse e-mail juntos (sem dizer qual dos dois "
-                    + "está errado, se algum estiver); 404 caso contrário. Gera um código numérico temporário, "
-                    + "grava como a senha da pessoa e manda por e-mail - o passo 2 (/trocar-senha) usa esse "
-                    + "código como \"senha atual\".")
-    @ApiResponse(responseCode = "404", description = "CPF e e-mail não correspondem a nenhuma pessoa cadastrada",
+    @Operation(summary = "Passo 1 de \"Esqueci minha senha\" - confirma o e-mail e manda um código por e-mail",
+            description = "204 se existe uma pessoa com esse e-mail; 404 caso contrário. Gera um código numérico "
+                    + "temporário, grava como a senha da pessoa e manda por e-mail - o passo 2 (/trocar-senha) "
+                    + "usa esse código como \"senha atual\".")
+    @ApiResponse(responseCode = "404", description = "Nenhuma pessoa cadastrada com esse e-mail",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public void esqueciSenha(@Valid @RequestBody EsqueciSenhaRequest request) {
         service.esqueciSenha(request);
@@ -83,12 +82,12 @@ public class AuthController {
     @PostMapping("/trocar-senha")
     @SecurityRequirements
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    @Operation(summary = "Passo 2 de \"Esqueci minha senha\" - troca a senha, exigindo CPF + e-mail + senha atual",
+    @Operation(summary = "Passo 2 de \"Esqueci minha senha\" - troca a senha, exigindo e-mail + senha atual",
             description = "Desliga a flag que bloqueia login (Pessoa.precisaTrocarSenha) - é isso que libera a "
                     + "pessoa pra entrar de verdade depois. Nova senha não pode ser igual à senha padrão.")
     @ApiResponse(responseCode = "401", description = "Senha atual inválida",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    @ApiResponse(responseCode = "404", description = "CPF e e-mail não correspondem a nenhuma pessoa cadastrada",
+    @ApiResponse(responseCode = "404", description = "Nenhuma pessoa cadastrada com esse e-mail",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public void trocarSenha(@Valid @RequestBody TrocarSenhaRequest request) {
         service.trocarSenha(request);

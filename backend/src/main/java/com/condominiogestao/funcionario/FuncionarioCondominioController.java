@@ -48,9 +48,9 @@ public class FuncionarioCondominioController {
     }
 
     @GetMapping("/pagina")
-    @Operation(summary = "Página da listagem de funcionários de um condomínio, com nome/CPF/e-mail/foto já embutidos",
+    @Operation(summary = "Página da listagem de funcionários de um condomínio, com nome/e-mail/telefone/foto já embutidos",
             description = "Pedido do Romulo: 15 registros por página por padrão, pra não listar todos de uma vez. "
-                    + "`busca` (opcional) filtra por nome (contém) ou pelos dígitos do CPF (contém).")
+                    + "`busca` (opcional) filtra por nome (contém).")
     public PaginaResponse<FuncionarioCondominioResumoResponse> listarPagina(
             @RequestParam Integer condominioId,
             @RequestParam(required = false) String busca,
