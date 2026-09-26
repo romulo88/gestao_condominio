@@ -84,12 +84,16 @@ public class ConversaPrivadaService {
 
     /** Funcionários COM LOGIN (perfil preenchido) e ativos do condomínio de quem está
      * logado - alimenta a combo de busca de destinatário (por nome), mesmo espírito de
-     * {@code DemandaResponsavelService.listarCandidatos}, com o filtro extra de perfil. */
+     * {@code DemandaResponsavelService.listarCandidatos}, com o filtro extra de perfil.
+     * Nunca inclui quem está logado (pedido do Romulo: evitar mandar mensagem privada pra
+     * si mesmo) - `criar()` já bloqueava isso na hora de enviar, mas nem oferecer a opção
+     * na combo é mais claro. */
     public List<CandidatoDestinatarioResponse> listarCandidatos(ContextoAutenticado contexto) {
         return funcionarioCondominioRepository.findByCondominioId(contexto.condominioId()).stream()
                 .filter(v -> v.getPerfil() != null
                         && v.getSituacao() == Situacao.ativo
-                        && v.getFuncionario().getSituacao() == Situacao.ativo)
+                        && v.getFuncionario().getSituacao() == Situacao.ativo
+                        && !v.getFuncionario().getId().equals(contexto.pessoaId()))
                 .map(v -> new CandidatoDestinatarioResponse(v.getFuncionario().getId(), v.getFuncionario().getNome(), v.getPerfil()))
                 .sorted(Comparator.comparing(CandidatoDestinatarioResponse::nome))
                 .toList();
