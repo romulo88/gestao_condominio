@@ -76,6 +76,21 @@ public final class Autorizacao {
         }
     }
 
+    /** Funcionário de perfil "completo" (não restrito - ver {@link FuncionarioPerfil#acessoRestrito})
+     * deste condomínio: síndico, sub-síndico, encarregado OU supervisor - mais amplo que
+     * {@link #ehGestorDoCondominio} (só síndico/sub-síndico). Uso: tela "Rondas" do síndico
+     * (feature "Controle de Rondas", pedido do Romulo) - os 4 perfis completos acompanham o
+     * histórico de rondas, rondista/agente de convívio não. */
+    public static boolean ehPerfilCompletoDoCondominio(ContextoAutenticado contexto, Integer condominioId) {
+        return ehFuncionarioDoCondominio(contexto, condominioId) && !FuncionarioPerfil.acessoRestrito(contexto.perfil());
+    }
+
+    public static void exigirPerfilCompletoDoCondominio(ContextoAutenticado contexto, Integer condominioId) {
+        if (!ehPerfilCompletoDoCondominio(contexto, condominioId)) {
+            throw new ForbiddenException("Só síndico, sub-síndico, encarregado ou supervisor deste condomínio pode fazer isso");
+        }
+    }
+
     /** Ações restritas ao administrador global (ex: criar/desativar condomínio, criar outro administrador). */
     public static void exigirAdministrador(ContextoAutenticado contexto) {
         if (!ehAdministrador(contexto)) {

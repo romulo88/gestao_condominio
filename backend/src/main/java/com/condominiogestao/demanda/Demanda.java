@@ -4,6 +4,7 @@ import com.condominiogestao.condominio.Condominio;
 import com.condominiogestao.funcionario.Funcionario;
 import com.condominiogestao.kanban.StatusKanban;
 import com.condominiogestao.morador.Morador;
+import com.condominiogestao.ronda.Ronda;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -129,6 +130,13 @@ public class Demanda {
      * funcionário (decidido em {@code DemandaService.criar}, não aqui). */
     @Column(name = "identificar_solicitante")
     private boolean identificarSolicitante = true;
+
+    /** Preenchida só quando a demanda nasceu durante uma ronda (botão "Nova demanda" na
+     * tela do rondista) - feature "Controle de Rondas", pedido do Romulo. Não muda em nada
+     * o fluxo de aprovação da demanda em si. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_ronda")
+    private Ronda ronda;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

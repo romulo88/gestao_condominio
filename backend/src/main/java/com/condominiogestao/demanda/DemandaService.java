@@ -27,6 +27,9 @@ import com.condominiogestao.morador.MoradorRepository;
 import com.condominiogestao.notificacao.EmailService;
 import com.condominiogestao.notificacao.EmailTemplates;
 import com.condominiogestao.pessoa.PessoaFotoService;
+import com.condominiogestao.ronda.Ronda;
+import com.condominiogestao.ronda.RondaRepository;
+import com.condominiogestao.ronda.RondaStatus;
 import com.condominiogestao.security.ContextoAutenticado;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -76,6 +79,7 @@ public class DemandaService {
     private final DemandaEtapaRepository etapaRepository;
     private final PessoaFotoService pessoaFotoService;
     private final EmailService emailService;
+    private final RondaRepository rondaRepository;
 
     public DemandaService(
             DemandaRepository repository,
@@ -92,7 +96,8 @@ public class DemandaService {
             DemandaAcompanhamentoRepository acompanhamentoRepository,
             DemandaEtapaRepository etapaRepository,
             PessoaFotoService pessoaFotoService,
-            EmailService emailService) {
+            EmailService emailService,
+            RondaRepository rondaRepository) {
         this.repository = repository;
         this.condominioRepository = condominioRepository;
         this.funcionarioRepository = funcionarioRepository;
@@ -108,6 +113,7 @@ public class DemandaService {
         this.etapaRepository = etapaRepository;
         this.pessoaFotoService = pessoaFotoService;
         this.emailService = emailService;
+        this.rondaRepository = rondaRepository;
     }
 
     /** Pedido do Romulo: avisar por e-mail quando a demanda é aprovada/reprovada - só
@@ -426,6 +432,10 @@ public class DemandaService {
             }
         }
         // statusAprovacao já nasce 'pendente' por default no campo da entidade
+
+        if (request.rondaId() != null) {
+            demanda.setRonda(buscarRondaDoProprioEmAndamento(contexto, request.rondaId()));
+        }
 
         Demanda salva = repository.save(demanda);
         return DemandaResponse.from(salva, podeGerenciarSigilo(contexto, salva));
@@ -1193,6 +1203,22 @@ public class DemandaService {
 
     private Demanda buscarDemanda(Integer id) {
         return repository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Demanda não encontrada: " + id));
+    }
+
+    /** Feature "Controle de Rondas": só o próprio rondista (dono da ronda) pode vincular
+     * uma demanda nova a ela, e só enquanto ela ainda estiver em andamento - não dá pra
+     * vincular a uma ronda já encerrada. */
+    private Ronda buscarRondaDoProprioEmAndamento(ContextoAutenticado contexto, Integer rondaId) {
+        Ronda ronda = rondaRepository
+                .findById(rondaId)
+                .orElseThrow(() -> new ResourceNotFoundException("Ronda não encontrada: " + rondaId));
+        if (!ronda.getFuncionario().getId().equals(contexto.pessoaId())) {
+            throw new ForbiddenException("Só o próprio rondista pode vincular uma demanda à ronda");
+        }
+        if (ronda.getStatus() != RondaStatus.em_andamento) {
+            throw new ConflictException("Essa ronda já foi encerrada");
+        }
+        return ronda;
     }
 
     private Funcionario buscarFuncionario(Integer id) {

@@ -3,6 +3,8 @@ package com.condominiogestao.demanda;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface DemandaRepository extends JpaRepository<Demanda, Integer> {
 
@@ -29,4 +31,15 @@ public interface DemandaRepository extends JpaRepository<Demanda, Integer> {
      * DemandaService.moverKanban}/{@code aprovar} pra inserir/reordenar um card e
      * renumerar o resto da coluna (pedido do Romulo: arrastar card pra qualquer posição). */
     List<Demanda> findByStatusKanbanIdOrderByOrdemAsc(Integer statusKanbanId);
+
+    /** Total de demandas abertas durante um conjunto de rondas - usado no resumo agregado
+     * da tela "Rondas" do síndico (feature "Controle de Rondas"). */
+    long countByRondaIdIn(List<Integer> rondaIds);
+
+    /** Contagem de demandas POR ronda (uma linha por `id_ronda` com pelo menos 1 demanda) -
+     * usado na listagem paginada da tela "Rondas", em lote pra evitar N+1 (mesmo espírito
+     * de {@code DemandaResponsavelRepository.findByDemandaIdIn}). Cada `Object[]` é
+     * `[id_ronda (Integer), total (Long)]`. */
+    @Query("SELECT d.ronda.id, COUNT(d) FROM Demanda d WHERE d.ronda.id IN :rondaIds GROUP BY d.ronda.id")
+    List<Object[]> contarPorRondaId(@Param("rondaIds") List<Integer> rondaIds);
 }
