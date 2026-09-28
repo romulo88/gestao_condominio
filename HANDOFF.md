@@ -6,6 +6,27 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v187)
+
+- **Filtro por número da demanda na listagem (v187, pedido do Romulo)** - "coloque um filtro por número da demanda... fácil de achar quando alguém falar apenas o número." Sem migration.
+  - **Backend**: `GET /api/demandas/pagina` ganhou `demandaId` (Integer, opcional) - filtro em memória (`demandaId == null || demandaId.equals(d.getId())`), mesmo estilo dos demais filtros de `DemandaService.listarPagina` (não é `@Query`, então não corre o risco de null-param da lição da v181). `?demandaId=abc` já cai no handler de `MethodArgumentTypeMismatchException` existente (400 "Parâmetro inválido: demandaId") - nenhum código novo de validação precisou ser escrito.
+  - **Frontend**: campo "Nº da demanda" (`demandas/page.tsx`) ao lado de "Buscar por descrição" - dígitos apenas, debounced (400ms), mesmo padrão do filtro "Nº da ronda" da tela `/rondas` (v184).
+  - **Testado pelo próprio Romulo** direto no navegador (confirmado funcionando).
+
+## Estado atual (v186)
+
+- **Perfil ou função no detalhamento da demanda (v186, pedido do Romulo)** - sem migration. Onde mostrava "(funcionário)" genérico, agora mostra o **perfil** (Síndico, Rondista, ...) pra quem tem, ou a **função** (texto livre, ex.: "Jardineiro") pra quem não tem - só cai no genérico "(funcionário)" se o vínculo não tiver nem um nem outro.
+  - **`DemandaResponse.solicitantePerfil`/`solicitanteFuncao`** (novos, nullable) - vêm do vínculo `FuncionarioCondominio` do solicitante NESTE condomínio (perfil e função não são mutuamente exclusivos no cadastro, mas a prioridade - perfil antes de função quando os dois existem - já é resolvida no backend, `DemandaService.funcaoSolicitante`, a tela só usa o que veio). `null` pra morador e nos endpoints de ação isolada (criar/aprovar/mover/etc.) - mesmo espírito (e mesma limitação aceita) de `statusKanbanDesde`: só `listar`/`listarPagina` calculam em lote (`FuncionarioCondominioRepository.findByFuncionarioIdInAndCondominioId`, evita N+1).
+  - **Frontend**: `demandas/page.tsx` e o modal de detalhe do `kanban/page.tsx` reaproveitam `PERFIL_LABEL` (já usado em outros combos) no lugar do texto fixo "funcionário".
+  - **Testado ao vivo**: demanda de teste aberta por funcionário com função "Jardineiro" (sem perfil) e outra por síndico (Romulo) - confirmado nos 3 endpoints (criar retorna `null`/`null`; `listar` e `listarPagina`, síndico E morador, retornam os valores certos) e no browser ("Aberta por Diego Moraes (Jardineiro)" / "Aberta por ROMULO ALMEIDA DE ANDRADE (Síndico)"). Dados de teste limpos.
+
+## Estado atual (v185)
+
+- **`#id` da ronda no detalhamento da demanda (v185, pedido do Romulo)** - sem migration (`Demanda.ronda` já existia desde a v181). Funcionário abrindo uma demanda vinculada a uma ronda agora vê "· durante a ronda #N" logo depois de "Aberta por ..." - avisa que foi um rondista quem viu algo e cadastrou, não o fluxo normal de morador/funcionário.
+  - **`DemandaResponse.rondaId`** (novo campo, `Integer`, nullable) - só aparece pra **funcionário**; morador recebe sempre `null`, mesmo que veja a mesma demanda (nunca é dele mesmo abrir uma vinculada a ronda, mas o campo é redigido por segurança do mesmo jeito que `funcionarioNome` na tela de Rondas). A regra reaproveita o `podeAcompanhar` que a própria demanda já calcula (`true` só pra morador vendo demanda de outra pessoa) como proxy de "quem vê é morador" - funciona porque toda demanda com `ronda` setada tem `funcionarioSolicitante` (nunca morador), então esse booleano só é `true` de verdade quando o viewer é morador.
+  - **Frontend**: `demandas/page.tsx` e o modal de detalhe do `kanban/page.tsx` (os 2 lugares que já mostravam "Aberta por...") ganharam o mesmo trecho condicional.
+  - **Testado ao vivo**: criar ronda + demanda vinculada como rondista, confirmar `rondaId` no retorno da criação e em `GET /api/demandas` (`todas=true`) e em `GET /api/demandas/pagina` pro síndico; confirmar `null` pro morador nos mesmos endpoints; confirmado visualmente no browser ("Aberta por ROMULO ALMEIDA DE ANDRADE (funcionário) em 28/09/2026 · durante a ronda #28" na listagem expandida). Dados de teste limpos, perfil do Romulo restaurado a síndico.
+
 ## Estado atual (v184)
 
 - **Tela "Rondas": observação pro rondista, filtros e paginador (v184, pedido do Romulo)** - sem migration (nenhuma coluna nova, o diagrama não mudou).

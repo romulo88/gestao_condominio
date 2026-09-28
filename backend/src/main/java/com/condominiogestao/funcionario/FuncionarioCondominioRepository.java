@@ -16,6 +16,10 @@ public interface FuncionarioCondominioRepository extends JpaRepository<Funcionar
 
     Optional<FuncionarioCondominio> findByFuncionarioIdAndCondominioId(Integer funcionarioId, Integer condominioId);
 
+    /** Em lote pra listagem de demandas (perfil/função do solicitante, pedido do Romulo) -
+     * evita N+1 (mesmo espírito de {@code DemandaResponsavelRepository.findByDemandaIdIn}). */
+    List<FuncionarioCondominio> findByFuncionarioIdInAndCondominioId(List<Integer> funcionarioIds, Integer condominioId);
+
     boolean existsByFuncionarioIdAndCondominioId(Integer funcionarioId, Integer condominioId);
 
     /** "Ativo" aqui é os dois níveis ao mesmo tempo: o vínculo com esse condomínio E a

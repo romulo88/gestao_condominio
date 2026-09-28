@@ -18,6 +18,8 @@ import com.condominiogestao.demanda.dto.DemandaResponse;
 import com.condominiogestao.demanda.dto.ResponsavelResumoResponse;
 import com.condominiogestao.etiqueta.dto.EtiquetaResponse;
 import com.condominiogestao.funcionario.Funcionario;
+import com.condominiogestao.funcionario.FuncionarioCondominio;
+import com.condominiogestao.funcionario.FuncionarioCondominioRepository;
 import com.condominiogestao.funcionario.FuncionarioPerfil;
 import com.condominiogestao.funcionario.FuncionarioRepository;
 import com.condominiogestao.kanban.StatusKanban;
@@ -39,6 +41,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -67,6 +70,7 @@ public class DemandaService {
     private final DemandaRepository repository;
     private final CondominioRepository condominioRepository;
     private final FuncionarioRepository funcionarioRepository;
+    private final FuncionarioCondominioRepository funcionarioCondominioRepository;
     private final MoradorRepository moradorRepository;
     private final StatusKanbanRepository statusKanbanRepository;
     private final DemandaStatusKanbanHistoricoRepository historicoRepository;
@@ -85,6 +89,7 @@ public class DemandaService {
             DemandaRepository repository,
             CondominioRepository condominioRepository,
             FuncionarioRepository funcionarioRepository,
+            FuncionarioCondominioRepository funcionarioCondominioRepository,
             MoradorRepository moradorRepository,
             StatusKanbanRepository statusKanbanRepository,
             DemandaStatusKanbanHistoricoRepository historicoRepository,
@@ -101,6 +106,7 @@ public class DemandaService {
         this.repository = repository;
         this.condominioRepository = condominioRepository;
         this.funcionarioRepository = funcionarioRepository;
+        this.funcionarioCondominioRepository = funcionarioCondominioRepository;
         this.moradorRepository = moradorRepository;
         this.statusKanbanRepository = statusKanbanRepository;
         this.historicoRepository = historicoRepository;
@@ -226,6 +232,12 @@ public class DemandaService {
         // mesmo na listagem pessoal (`todas=false`) - é a mesma informação, sem restrição de
         // visibilidade adicional (`statusKanbanNome` já é exposto pros dois papéis).
         Map<Integer, LocalDateTime> statusKanbanDesdePorDemanda = buscarStatusKanbanDesdePorDemanda(idsDemandas);
+        // Perfil/função do funcionário solicitante, NESTE condomínio (pedido do Romulo:
+        // mostrar quem é, além de "(funcionário)") - mesmo espírito de KPI calculado em
+        // lote, só nas listagens (não em ações isoladas como aprovar/mover, ver overloads
+        // de `DemandaResponse.from`).
+        Map<Integer, FuncionarioCondominio> vinculosPorFuncionarioSolicitante =
+                buscarVinculosPorFuncionarioSolicitante(demandas, contexto.condominioId());
 
         if (!ehFuncionario) {
             // "Acompanhar" (v116) é morador-only - só calcula em lote aqui, funcionário
@@ -247,6 +259,8 @@ public class DemandaService {
                             List.of(),
                             podeAcompanhar(contexto, d),
                             idsAcompanhados.contains(d.getId()),
+                            perfilSolicitante(d, vinculosPorFuncionarioSolicitante),
+                            funcaoSolicitante(d, vinculosPorFuncionarioSolicitante),
                             statusKanbanDesdePorDemanda.get(d.getId())))
                     .toList();
         }
@@ -264,6 +278,8 @@ public class DemandaService {
                         responsaveisPorDemanda.getOrDefault(d.getId(), List.of()),
                         false,
                         false,
+                        perfilSolicitante(d, vinculosPorFuncionarioSolicitante),
+                        funcaoSolicitante(d, vinculosPorFuncionarioSolicitante),
                         statusKanbanDesdePorDemanda.get(d.getId())))
                 .toList();
     }
@@ -272,9 +288,10 @@ public class DemandaService {
      * demandas em 20 registros") - mesma visibilidade de {@code listar(contexto, false)}
      * (funcionário vê todas do condomínio, morador só as próprias; sigilo filtrado do
      * mesmo jeito), só que devolvendo uma página por vez em vez da lista inteira. Os
-     * filtros de `/demandas` (busca por descrição, status de aprovação OU coluna do
-     * Kanban - convenção `"kanban:<id>"`, nota não lida, etapa vencida) que antes eram só
-     * client-side (sobre a lista inteira já carregada) viraram parâmetros aqui, porque
+     * filtros de `/demandas` (busca por descrição, `demandaId` - número exato, pedido do
+     * Romulo: "fácil de achar quando alguém falar apenas o número" -, status de aprovação
+     * OU coluna do Kanban - convenção `"kanban:<id>"`, nota não lida, etapa vencida) que
+     * antes eram só client-side (sobre a lista inteira já carregada) viraram parâmetros aqui, porque
      * paginar e filtrar client-side ao mesmo tempo não faz sentido - filtrar só dentro da
      * página exibida esconderia resultados que estariam em outra página. Mesma regra de
      * "nota não lida/etapa vencida ignoram o status" que a tela já tinha (ver comentário
@@ -289,6 +306,7 @@ public class DemandaService {
     public DemandaPaginaResponse listarPagina(
             ContextoAutenticado contexto,
             String busca,
+            Integer demandaId,
             String status,
             boolean notaNaoLida,
             boolean etapaVencida,
@@ -332,6 +350,7 @@ public class DemandaService {
 
         List<Demanda> filtradas = visiveis.stream()
                 .filter(d -> buscaNormalizada.isEmpty() || d.getDescricao().toLowerCase().contains(buscaNormalizada))
+                .filter(d -> demandaId == null || demandaId.equals(d.getId()))
                 .filter(d -> !meuResponsavel || idsOndeSouResponsavel.contains(d.getId()))
                 .filter(d -> {
                     boolean bateStatus = notaNaoLida
@@ -358,6 +377,8 @@ public class DemandaService {
         List<Integer> idsPagina = demandasDaPagina.stream().map(Demanda::getId).toList();
         Set<Integer> idsComAnexo = buscarIdsComAnexo(idsPagina);
         Map<Integer, List<EtiquetaResponse>> etiquetasPorDemanda = buscarEtiquetasPorDemanda(idsPagina);
+        Map<Integer, FuncionarioCondominio> vinculosPorFuncionarioSolicitante =
+                buscarVinculosPorFuncionarioSolicitante(demandasDaPagina, contexto.condominioId());
 
         List<DemandaResponse> itens;
         if (!ehFuncionario) {
@@ -375,7 +396,10 @@ public class DemandaService {
                             flagsEtapasPorDemanda.getOrDefault(d.getId(), EtapaFlags.NENHUMA).vigente(),
                             List.of(),
                             podeAcompanhar(contexto, d),
-                            idsAcompanhados.contains(d.getId())))
+                            idsAcompanhados.contains(d.getId()),
+                            perfilSolicitante(d, vinculosPorFuncionarioSolicitante),
+                            funcaoSolicitante(d, vinculosPorFuncionarioSolicitante),
+                            null))
                     .toList();
         } else {
             Map<Integer, List<ResponsavelResumoResponse>> responsaveisPorDemanda =
@@ -391,7 +415,10 @@ public class DemandaService {
                             flagsEtapasPorDemanda.getOrDefault(d.getId(), EtapaFlags.NENHUMA).vigente(),
                             responsaveisPorDemanda.getOrDefault(d.getId(), List.of()),
                             false,
-                            false))
+                            false,
+                            perfilSolicitante(d, vinculosPorFuncionarioSolicitante),
+                            funcaoSolicitante(d, vinculosPorFuncionarioSolicitante),
+                            null))
                     .toList();
         }
 
@@ -1139,6 +1166,46 @@ public class DemandaService {
     /** Responsáveis de várias demandas de uma vez - pra `listar()` (card do Kanban), sem
      * N+1: uma consulta pras atribuições + uma pros links de foto (mesmo padrão de
      * {@link #buscarEtiquetasPorDemanda}/{@link #buscarIdsComAnexo}). */
+    /** Perfil/função do funcionário solicitante, NESTE condomínio (pedido do Romulo: "no
+     * detalhamento da demanda, colocar a função pra quem não tem perfil, ou o perfil pra
+     * quem tem") - em lote, uma vez por chamada de {@code listar}/{@code listarPagina}
+     * (evita N+1). Ignora demanda de morador (`getFuncionarioSolicitante() == null`). */
+    private Map<Integer, FuncionarioCondominio> buscarVinculosPorFuncionarioSolicitante(
+            List<Demanda> demandas, Integer condominioId) {
+        List<Integer> idsFuncionarios = demandas.stream()
+                .map(Demanda::getFuncionarioSolicitante)
+                .filter(Objects::nonNull)
+                .map(Funcionario::getId)
+                .distinct()
+                .toList();
+        if (idsFuncionarios.isEmpty()) {
+            return Map.of();
+        }
+        return funcionarioCondominioRepository
+                .findByFuncionarioIdInAndCondominioId(idsFuncionarios, condominioId)
+                .stream()
+                .collect(Collectors.toMap(fc -> fc.getFuncionario().getId(), fc -> fc));
+    }
+
+    private FuncionarioPerfil perfilSolicitante(Demanda demanda, Map<Integer, FuncionarioCondominio> vinculos) {
+        if (demanda.getFuncionarioSolicitante() == null) {
+            return null;
+        }
+        FuncionarioCondominio vinculo = vinculos.get(demanda.getFuncionarioSolicitante().getId());
+        return vinculo != null ? vinculo.getPerfil() : null;
+    }
+
+    /** Só retorna a função quando NÃO há perfil (pedido do Romulo: perfil e função não são
+     * mutuamente exclusivos no cadastro, mas a tela mostra só um dos dois, priorizando o
+     * perfil quando os dois existem). */
+    private String funcaoSolicitante(Demanda demanda, Map<Integer, FuncionarioCondominio> vinculos) {
+        if (demanda.getFuncionarioSolicitante() == null) {
+            return null;
+        }
+        FuncionarioCondominio vinculo = vinculos.get(demanda.getFuncionarioSolicitante().getId());
+        return vinculo != null && vinculo.getPerfil() == null ? vinculo.getFuncao() : null;
+    }
+
     private Map<Integer, List<ResponsavelResumoResponse>> buscarResponsaveisPorDemanda(List<Integer> demandaIds) {
         if (demandaIds.isEmpty()) {
             return Map.of();

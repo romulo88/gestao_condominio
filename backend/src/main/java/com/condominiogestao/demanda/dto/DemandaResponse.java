@@ -3,6 +3,7 @@ package com.condominiogestao.demanda.dto;
 import com.condominiogestao.demanda.Demanda;
 import com.condominiogestao.demanda.DemandaStatusAprovacao;
 import com.condominiogestao.etiqueta.dto.EtiquetaResponse;
+import com.condominiogestao.funcionario.FuncionarioPerfil;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -89,6 +90,25 @@ public record DemandaResponse(
          * do Kanban. Sempre false pra funcionário (a funcionalidade é morador-only) e pra
          * demanda que o próprio morador abriu (não tem sentido acompanhar a própria). */
         boolean acompanhando,
+        /** Id da ronda durante a qual a demanda foi aberta (botão "Nova demanda" na tela de
+         * ronda do rondista, pedido do Romulo) - pra funcionário saber que ela veio de um
+         * rondista. Null quando não nasceu numa ronda, e SEMPRE null pra morador (ver a
+         * regra em {@link #from}). */
+        Integer rondaId,
+        /** Perfil do funcionário solicitante NESTE condomínio (pedido do Romulo: mostrar
+         * quem é, além de "(funcionário)") - `null` quando o solicitante é morador, quando
+         * o funcionário não tem perfil nesse condomínio (só {@code solicitanteFuncao},
+         * texto livre, se houver), ou nos endpoints que não calculam isso em lote (mesmo
+         * espírito de {@code statusKanbanDesde} - só {@link com.condominiogestao.demanda.DemandaService#listar}
+         * e {@code listarPagina} calculam; ações isoladas como aprovar/mover não). */
+        FuncionarioPerfil solicitantePerfil,
+        /** Função do funcionário solicitante NESTE condomínio (texto livre, ex.:
+         * "Zelador") - vem `null` quando ele TEM {@code solicitantePerfil} (perfil e
+         * função não são mutuamente exclusivos no cadastro, mas a exibição prioriza o
+         * perfil quando os dois existem - já resolvido no backend, ver
+         * {@code DemandaService.funcaoSolicitante}, a tela não precisa repetir a regra).
+         * Mesma regra de cálculo em lote de {@code solicitantePerfil}. */
+        String solicitanteFuncao,
         /** Desde quando a demanda está na coluna ATUAL dela (a transição mais recente do
          * histórico) - alimenta o KPI de "dias parado" do Kanban (raia finalística/recorrente
          * não entra nessa contagem, ver {@code StatusKanban.finalistico}/{@code recorrente}).
@@ -129,6 +149,8 @@ public record DemandaResponse(
                 responsaveis,
                 podeAcompanhar,
                 acompanhando,
+                null,
+                null,
                 null);
     }
 
@@ -143,6 +165,8 @@ public record DemandaResponse(
             List<ResponsavelResumoResponse> responsaveis,
             boolean podeAcompanhar,
             boolean acompanhando,
+            FuncionarioPerfil solicitantePerfil,
+            String solicitanteFuncao,
             LocalDateTime statusKanbanDesde) {
         boolean solicitanteMorador = demanda.getMoradorSolicitante() != null;
         String nomeSolicitante = solicitanteMorador
@@ -176,6 +200,13 @@ public record DemandaResponse(
                 responsaveis,
                 podeAcompanhar,
                 acompanhando,
+                // `podeAcompanhar` só é true pra morador olhando demanda que não é dele - é
+                // o único jeito de um morador ver uma demanda que veio de ronda (quem abre
+                // pela ronda é sempre funcionário), então serve de "é morador?" aqui sem
+                // precisar do viewer em todos os `from`. Pra funcionário é sempre false.
+                demanda.getRonda() != null && !podeAcompanhar ? demanda.getRonda().getId() : null,
+                solicitantePerfil,
+                solicitanteFuncao,
                 statusKanbanDesde,
                 demanda.getCreatedAt(),
                 demanda.getUpdatedAt());
