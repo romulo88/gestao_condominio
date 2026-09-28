@@ -3,6 +3,7 @@ package com.condominiogestao.ronda;
 import com.condominiogestao.common.Autorizacao;
 import com.condominiogestao.common.ConflictException;
 import com.condominiogestao.common.ForbiddenException;
+import com.condominiogestao.common.InvalidRequestException;
 import com.condominiogestao.common.PaginaResponse;
 import com.condominiogestao.common.ResourceNotFoundException;
 import com.condominiogestao.common.TipoPessoa;
@@ -13,12 +14,14 @@ import com.condominiogestao.funcionario.Funcionario;
 import com.condominiogestao.funcionario.FuncionarioPerfil;
 import com.condominiogestao.funcionario.FuncionarioRepository;
 import com.condominiogestao.ronda.dto.RondaDetalheResponse;
+import com.condominiogestao.ronda.dto.RondaFinalizarRequest;
 import com.condominiogestao.ronda.dto.RondaPontoRequest;
 import com.condominiogestao.ronda.dto.RondaResponse;
 import com.condominiogestao.ronda.dto.RondaResumoResponse;
 import com.condominiogestao.security.ContextoAutenticado;
 import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -93,7 +96,7 @@ public class RondaService {
         ronda.setStatus(RondaStatus.em_andamento);
 
         Ronda salva = repository.save(ronda);
-        return RondaResponse.from(salva, 0, podeVerNomeFuncionario(contexto));
+        return RondaResponse.from(salva, 0, podeVerNomeFuncionario(contexto), podeVerObservacao(contexto));
     }
 
     @Transactional
@@ -107,7 +110,8 @@ public class RondaService {
             throw new ResourceNotFoundException("Nenhuma ronda em andamento");
         }
         return RondaResponse.from(
-                ronda, demandaRepository.countByRondaIdIn(List.of(ronda.getId())), podeVerNomeFuncionario(contexto));
+                ronda, demandaRepository.countByRondaIdIn(List.of(ronda.getId())), podeVerNomeFuncionario(contexto),
+                podeVerObservacao(contexto));
     }
 
     @Transactional
@@ -121,7 +125,7 @@ public class RondaService {
             ponto.setRonda(ronda);
             ponto.setLatitude(p.latitude());
             ponto.setLongitude(p.longitude());
-            ponto.setCapturadoEm(p.capturadoEm());
+            ponto.setCapturadoEm(LocalDateTime.ofInstant(p.capturadoEm(), ZoneId.systemDefault()));
             return ponto;
         }).toList();
         pontoRepository.saveAll(entidades);
@@ -131,9 +135,14 @@ public class RondaService {
      * Autorizado pro próprio dono da ronda (encerramento normal, {@code finalizada}) OU
      * por um perfil completo do condomínio encerrando uma ronda esquecida de outro
      * rondista ({@code encerrada_manualmente}) - pedido do Romulo.
+     *
+     * <p>Quando é o dono, {@code request.tipo()} é obrigatório (o modal do "Finalizar ronda"
+     * já força escolher) e {@code request.observacao()} é opcional; quando é um perfil
+     * completo encerrando a ronda de outra pessoa, o corpo é ignorado (só o rondista sabe o
+     * que fez) - a ronda fica sem tipo/observação.
      */
     @Transactional
-    public RondaResponse finalizar(ContextoAutenticado contexto, Integer rondaId) {
+    public RondaResponse finalizar(ContextoAutenticado contexto, Integer rondaId, RondaFinalizarRequest request) {
         Ronda ronda = buscarRonda(rondaId);
         boolean ehDono = ronda.getFuncionario().getId().equals(contexto.pessoaId());
         boolean ehGestor = Autorizacao.ehPerfilCompletoDoCondominio(contexto, ronda.getCondominio().getId());
@@ -142,18 +151,43 @@ public class RondaService {
         }
         exigirEmAndamento(ronda);
 
+        if (ehDono) {
+            if (request == null || request.tipo() == null) {
+                throw new InvalidRequestException("Selecione o tipo da ronda");
+            }
+            ronda.setTipo(request.tipo());
+            String observacao = request.observacao() == null ? "" : request.observacao().trim();
+            ronda.setObservacao(observacao.isEmpty() ? null : observacao);
+        }
+
         fecharRonda(ronda, ehDono ? RondaStatus.finalizada : RondaStatus.encerrada_manualmente, LocalDateTime.now());
         Ronda salva = repository.save(ronda);
         return RondaResponse.from(
-                salva, demandaRepository.countByRondaIdIn(List.of(salva.getId())), podeVerNomeFuncionario(contexto));
+                salva, demandaRepository.countByRondaIdIn(List.of(salva.getId())), podeVerNomeFuncionario(contexto),
+                podeVerObservacao(contexto));
     }
 
     public PaginaResponse<RondaResponse> listarPagina(
-            ContextoAutenticado contexto, Integer funcionarioId, LocalDateTime inicio, LocalDateTime fim, int pagina, int tamanho) {
+            ContextoAutenticado contexto,
+            Integer funcionarioId,
+            LocalDateTime inicio,
+            LocalDateTime fim,
+            TipoRonda tipo,
+            Integer rondaId,
+            String observacao,
+            int pagina,
+            int tamanho) {
         exigirPodeVerHistorico(contexto);
 
         Page<Ronda> paginaRondas = repository.findAll(
-                especificacao(contexto.condominioId(), funcionarioIdEfetivo(contexto, funcionarioId), inicio, fim),
+                especificacao(
+                        contexto.condominioId(),
+                        funcionarioIdEfetivo(contexto, funcionarioId),
+                        inicio,
+                        fim,
+                        tipo,
+                        rondaId,
+                        observacaoEfetiva(contexto, observacao)),
                 PageRequest.of(
                         Math.max(pagina, 0),
                         Math.min(Math.max(tamanho, 1), 100),
@@ -162,15 +196,29 @@ public class RondaService {
 
         Map<Integer, Long> totalDemandasPorRonda = contarDemandasPorRonda(paginaRondas.getContent());
         boolean podeVerNome = podeVerNomeFuncionario(contexto);
-        return PaginaResponse.from(paginaRondas.map(
-                ronda -> RondaResponse.from(ronda, totalDemandasPorRonda.getOrDefault(ronda.getId(), 0L), podeVerNome)));
+        boolean podeVerObs = podeVerObservacao(contexto);
+        return PaginaResponse.from(paginaRondas.map(ronda -> RondaResponse.from(
+                ronda, totalDemandasPorRonda.getOrDefault(ronda.getId(), 0L), podeVerNome, podeVerObs)));
     }
 
-    public RondaResumoResponse resumo(ContextoAutenticado contexto, Integer funcionarioId, LocalDateTime inicio, LocalDateTime fim) {
+    public RondaResumoResponse resumo(
+            ContextoAutenticado contexto,
+            Integer funcionarioId,
+            LocalDateTime inicio,
+            LocalDateTime fim,
+            TipoRonda tipo,
+            Integer rondaId,
+            String observacao) {
         exigirPodeVerHistorico(contexto);
 
-        List<Ronda> rondas = repository.findAll(
-                especificacao(contexto.condominioId(), funcionarioIdEfetivo(contexto, funcionarioId), inicio, fim));
+        List<Ronda> rondas = repository.findAll(especificacao(
+                contexto.condominioId(),
+                funcionarioIdEfetivo(contexto, funcionarioId),
+                inicio,
+                fim,
+                tipo,
+                rondaId,
+                observacaoEfetiva(contexto, observacao)));
         rondas.forEach(this::fecharSeAbandonada);
 
         LocalDateTime agora = LocalDateTime.now();
@@ -197,19 +245,36 @@ public class RondaService {
 
         List<RondaPonto> pontos = pontoRepository.findByRondaIdOrderByCapturadoEmAsc(rondaId);
         long totalDemandas = demandaRepository.countByRondaIdIn(List.of(ronda.getId()));
-        return RondaDetalheResponse.from(ronda, totalDemandas, pontos, podeVerNomeFuncionario(contexto));
+        return RondaDetalheResponse.from(
+                ronda, totalDemandas, pontos, podeVerNomeFuncionario(contexto), podeVerObservacao(contexto));
     }
 
     /** Filtros opcionais da tela "Rondas" do síndico - `condominioId` sempre presente (é o
      * do próprio contexto, nunca vem da requisição), `funcionarioId`/`inicio`/`fim` só
      * viram predicado quando informados (ver Javadoc de {@link RondaRepository} - é
      * exatamente pra evitar um parâmetro nulo sem tipo chegar ao Postgres). */
-    private Specification<Ronda> especificacao(Integer condominioId, Integer funcionarioId, LocalDateTime inicio, LocalDateTime fim) {
+    private Specification<Ronda> especificacao(
+            Integer condominioId,
+            Integer funcionarioId,
+            LocalDateTime inicio,
+            LocalDateTime fim,
+            TipoRonda tipo,
+            Integer rondaId,
+            String observacao) {
         return (root, query, cb) -> {
             List<Predicate> predicados = new ArrayList<>();
             predicados.add(cb.equal(root.get("condominio").get("id"), condominioId));
             if (funcionarioId != null) {
                 predicados.add(cb.equal(root.get("funcionario").get("id"), funcionarioId));
+            }
+            if (tipo != null) {
+                predicados.add(cb.equal(root.get("tipo"), tipo));
+            }
+            if (rondaId != null) {
+                predicados.add(cb.equal(root.get("id"), rondaId));
+            }
+            if (observacao != null) {
+                predicados.add(cb.like(cb.lower(root.get("observacao")), "%" + escaparLike(observacao.toLowerCase()) + "%", '\\'));
             }
             if (inicio != null) {
                 predicados.add(cb.greaterThanOrEqualTo(root.get("iniciadaEm"), inicio));
@@ -300,10 +365,33 @@ public class RondaService {
         return ehRondista(contexto) ? contexto.pessoaId() : funcionarioIdSolicitado;
     }
 
-    /** Pedido do Romulo: só perfil completo vê QUEM fez a ronda - rondista (a própria
-     * lista) e morador (transparência) veem só o {@code id} da ronda. */
+    /** Pedido do Romulo: só perfil completo vê QUEM fez a ronda e a observação escrita pelo
+     * rondista - rondista (a própria lista) e morador (transparência) veem só o {@code id}
+     * e o {@code tipo} da ronda. */
     private boolean podeVerNomeFuncionario(ContextoAutenticado contexto) {
         return Autorizacao.ehPerfilCompletoDoCondominio(contexto, contexto.condominioId());
+    }
+
+    /** Observação escrita pelo rondista: perfil completo e o próprio rondista (lembrete pra
+     * ele - a lista dele já é só das próprias rondas, ver {@link #funcionarioIdEfetivo}).
+     * Morador não vê. */
+    private boolean podeVerObservacao(ContextoAutenticado contexto) {
+        return podeVerNomeFuncionario(contexto) || ehRondista(contexto);
+    }
+
+    /** Filtro por texto da observação só vale pra quem PODE ver a observação - senão um
+     * morador descobriria o que o rondista escreveu testando trechos no filtro. Pra ele o
+     * parâmetro é ignorado (não dá erro, só não filtra). Vazio/em branco também não filtra. */
+    private String observacaoEfetiva(ContextoAutenticado contexto, String observacao) {
+        if (!podeVerObservacao(contexto) || observacao == null || observacao.isBlank()) {
+            return null;
+        }
+        return observacao.trim();
+    }
+
+    /** `%` e `_` digitados no filtro valem como texto, não como curinga do LIKE. */
+    private String escaparLike(String texto) {
+        return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private boolean ehRondista(ContextoAutenticado contexto) {

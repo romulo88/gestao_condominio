@@ -58,6 +58,17 @@ public class Ronda {
     @Column(name = "distancia_metros")
     private Double distanciaMetros;
 
+    /** Informado pelo próprio rondista ao finalizar - null em ronda em andamento, encerrada
+     * por outra pessoa/pelo sistema, ou anterior à V31. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo", length = 30)
+    private TipoRonda tipo;
+
+    /** Texto livre do rondista (máx. 100 caracteres, ex.: "Acompanhando entregador até a
+     * casa 300") - só o perfil completo enxerga (ver {@code RondaResponse}). */
+    @Column(name = "observacao", length = 100)
+    private String observacao;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
