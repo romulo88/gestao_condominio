@@ -1,6 +1,7 @@
 package com.condominiogestao.morador;
 
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,6 +13,14 @@ public interface MoradorCondominioRepository extends JpaRepository<MoradorCondom
     List<MoradorCondominio> findByMoradorId(Integer moradorId);
 
     List<MoradorCondominio> findByCondominioId(Integer condominioId);
+
+    /** Vínculo específico de um morador num condomínio - usado por {@code EventoService}
+     * pra mostrar a unidade (apto/casa) do morador que cadastrou o evento pra portaria. */
+    Optional<MoradorCondominio> findByMoradorIdAndCondominioId(Integer moradorId, Integer condominioId);
+
+    /** Carga em lote da mesma informação, pra listagem paginada (evita 1 query por evento -
+     * ver {@code EventoService.montarRespostasEmLote}). */
+    List<MoradorCondominio> findByCondominioIdAndMoradorIdIn(Integer condominioId, List<Integer> moradorIds);
 
     boolean existsByMoradorIdAndCondominioId(Integer moradorId, Integer condominioId);
 

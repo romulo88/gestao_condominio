@@ -6,6 +6,123 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v192)
+
+- **Edição de Evento reformulada - granularidade por item (v192, pedido do Romulo)** - sem
+  migration. A v190/v191 bloqueavam a edição inteira assim que qualquer item era liberado;
+  o Romulo pediu algo mais fino: "eu preciso editar um evento ainda futuro. Ponto." Substitui
+  totalmente a lógica de `atualizar` (as duas rotas `POST .../pessoas`/`.../veiculos` da
+  v191 foram removidas - o PATCH agora cobre o caso delas, mais completo).
+  - **Regras novas** (`EventoService.atualizar`): (1) permitido editar o evento a qualquer
+    momento antes de ele acontecer, **mesmo com item já liberado** - só bloqueia se o
+    evento já passou (404/409 de antes não mudou pra `excluir`, que continua exigindo
+    NENHUM item liberado, já que apagar o evento inteiro destruiria o registro de
+    liberação). (2) `data`/`espacoComumId` só podem mudar se a data ATUAL (antes da
+    edição) ainda não é hoje - no dia do evento, os dois têm que vir iguais ao que já
+    está salvo (400 senão). (3) Veículos/pessoas são **sincronizados item a item**, não
+    mais substituídos por completo: `EventoVeiculoAtualizarRequest`/
+    `EventoPessoaAtualizarRequest` ganharam um campo `id` opcional (nulo = item novo,
+    preenchido = atualiza o existente) - `sincronizarPessoas`/`sincronizarVeiculos`
+    atualizam quem tem `id` e não está liberado, criam quem não tem `id`, apagam quem não
+    veio na lista (e não está liberado) e **preservam intacto qualquer item já liberado**,
+    mesmo que venha com dados diferentes na requisição (ignorado silenciosamente) ou nem
+    apareça na lista. Mínimo de 1 pessoa é checado no TOTAL depois da sincronização
+    (liberadas + as da lista), não mais na lista sozinha.
+  - **Frontend** (`/eventos`): volta a ser o mesmo formulário do cadastro (like pedido
+    "quero que me exiba o mesmo formulário, pq aí eu consigo visualizar quem já foi
+    liberado") - cada pessoa/veículo já liberado aparece como texto travado com um selo
+    "Liberado" (sem input, sem botão de remover); os demais continuam editáveis/removíveis
+    normalmente. Campos Local/Data ficam desabilitados quando a data salva é hoje. Painel
+    de "adicionar rápido" da v191 foi removido (redundante - o formulário completo já
+    cobre o caso). "Editar" aparece pra qualquer evento futuro (não exige mais zero
+    liberado); "Excluir" continua exigindo zero liberado.
+  - **Testado ao vivo**: edição completa com data/local mudando (evento não é hoje);
+    tentativa de mudar dados/placa de item já liberado sendo ignorada (mantém original);
+    item liberado preservado mesmo omitido da lista; item não-liberado removido quando
+    omitido; 400 tentando mudar data/espaço no dia do evento; 400 com 0 pessoas no total;
+    excluir ainda 409 com item liberado. Testado também no browser (formulário mostra item
+    liberado travado e item comum editável, edição salva certo). Dados de teste limpos.
+
+## Estado atual (v191)
+
+- **Adicionar pessoa/veículo mesmo após liberação + ajustes de UI (v191, pedido do Romulo)**
+  - sem migration. Lacuna encontrada testando a v190: a edição completa (PATCH) fica
+  bloqueada assim que qualquer item é liberado - certo pra edição/exclusão de verdade
+  (substituiria/apagaria um registro de liberação já feito), mas errado pro caso real "na
+  hora do evento, incluir mais gente" (convidado surpresa chega depois que a portaria já
+  liberou os primeiros).
+  - **`POST /api/eventos/{id}/pessoas`** e **`POST /api/eventos/{id}/veiculos`**: só
+    acrescentam (nunca apagam/substituem nada) - por isso são permitidos mesmo com item já
+    liberado, exigindo só que o evento ainda não tenha ocorrido. `EventoService` ganhou
+    `exigirDonoDoEventoFuturo` (dono + evento futuro, sem checar liberação) como base de
+    `exigirDonoEditavel` (que soma a checagem de liberação, só pra `atualizar`/`excluir`).
+  - **Frontend** (`/eventos`): quando o evento já tem item liberado mas ainda não ocorreu,
+    aparece "+ Adicionar pessoa/veículo" (painel inline com nome+documento e placa) no
+    lugar dos ícones de editar/excluir (que ficam reservados pra quando NADA foi liberado
+    ainda). Ícones de editar/excluir (lápis/lixeira, mesmo padrão das outras grades)
+    movidos pra frente da linha, a pedido do Romulo.
+  - **Achado**: o "bug" relatado ("editar não aparece num evento de amanhã") não era bug -
+    era um evento real de teste que já tinha item liberado (a regra sempre permitiu
+    editar/excluir com data futura, só bloqueia depois que já aconteceu OU depois de
+    liberação). Confirmado direto no banco antes de qualquer mudança de código.
+  - **Testado ao vivo**: PATCH continua 409 depois de liberação; POST .../pessoas e
+    .../veiculos com 201, preservando o item já liberado; testado no browser (painel
+    inline abre, adiciona pessoa, contador de liberados atualiza, painel continua aberto
+    pra adicionar mais). Dados de teste limpos.
+
+## Estado atual (v190)
+
+- **Morador exclui o próprio Evento + ajustes na tela (v190, pedido do Romulo)** - sem
+  migration. `DELETE /api/eventos/{id}`: mesma autorização de editar (dono, evento ainda
+  não ocorrido, nenhum item liberado - 403/409 senão), extraída pra um helper comum
+  (`EventoService.exigirDonoEditavel`, compartilhado por `atualizar`/`excluir`).
+  - **Frontend**: ícones (lápis/lixeira, mesmo padrão visual das outras grades do sistema -
+    Etiqueta/EspaçoComum/etc.) no lugar do link de texto "Editar"; excluir pede confirmação
+    (`window.confirm`, mesmo padrão de excluir coluna do Kanban). A lista de eventos fica
+    escondida enquanto o formulário (criar OU editar) está aberto, pra não ficar redundante.
+  - **Achado, não era bug**: o Romulo relatou que "Editar" não aparecia num evento cadastrado
+    pra amanhã, suspeitando que a regra bloqueava data futura - na verdade a regra sempre
+    permitiu editar/excluir enquanto a data não passou (só bloqueia depois que já
+    aconteceu) - confirmado ao vivo com um evento pra "amanhã" mostrando os dois ícones
+    normalmente. O sintoma real era eu ainda não ter pedido reinício do backend pro
+    endpoint de exclusão logo depois de criá-lo - testar `DELETE` contra esse backend
+    antigo caiu no mesmo bug de "403 vazio enganoso" (handler inexistente → `/error` →
+    bloqueado pelo Spring Security) já documentado nesta sessão.
+  - **Testado ao vivo**: 204 excluindo evento sem liberação; 409 excluindo um com item já
+    liberado; lista atualiza corretamente; testado no browser (ícones aparecem certos,
+    formulário de edição abre e esconde a lista).
+
+## Estado atual (v189)
+
+- **Morador edita o próprio Evento (v189, pedido do Romulo)** - sem migration. `PATCH
+  /api/eventos/{id}`: substitui local/motivo/data/horario e RECRIA as listas de
+  veículos/pessoas (não faz diff item a item - mais simples, não há histórico a preservar
+  antes da liberação). Só o próprio morador que cadastrou (403 senão), e só **antes** da
+  data do evento passar (no próprio dia ainda dá - só bloqueia com 409 quando a data
+  atual, a antiga, já é passado) e **antes** de qualquer veículo/pessoa já ter sido
+  liberado pela portaria (409 - editar depois disso apagaria um registro de liberação já
+  feito). `EventoService.criar`/`atualizar` passaram a compartilhar a validação do espaço
+  (`resolverEspacoComum`, extraído).
+  - **Frontend**: botão "Editar" em cada card de `/eventos`, só aparece quando o próprio
+    front já sabe que passaria a checagem (`podeEditar` - mesma regra de data/liberação,
+    sinalização antecipada; o backend é quem de fato garante). Reaproveita o mesmo
+    formulário do cadastro (agora com modo criar/editar, pré-preenchido ao abrir).
+  - **Testado ao vivo**: 403 pra outro morador tentando editar; edição de verdade troca
+    motivo/data/horário e substitui veículo/pessoa (ids antigos somem, novos aparecem);
+    409 depois de liberar 1 item; testado também no browser (form pré-preenchido, "Editar"
+    some no evento com item já liberado, aparece no que não tem).
+
+## Estado atual (v188)
+
+- **Perfil Porteiro + Espaços de Lazer + Cadastro de Eventos (v188, pedido do Romulo)** - hoje o morador avisa a portaria de festas/visitas (carros e pessoas esperados) por WhatsApp, sem histórico nem padronização. Substituído por um cadastro próprio, com liberação por item conforme as pessoas chegam.
+  - **Migrations `V32`-`V34`**: `V32` adiciona `porteiro` à CHECK de `funcionarios_condominios.perfil` (mesmo padrão da `V28`). `V33` cria `espacos_comuns` (nome + situação ativo/inativo, por condomínio - mesmo padrão de `Etiqueta`). `V34` cria `eventos` (`id_morador`, `id_espaco_comum` nullable = própria unidade, `motivo`, `data`, `horario` livre) e as tabelas filhas `evento_veiculos`/`evento_pessoas` (cada uma com `liberado`/`id_funcionario_liberou`/`liberado_em`).
+  - **Perfil `porteiro`** (`FuncionarioPerfil`) é acesso restrito (como `rondista`/`agente_convivio`) - sem Kanban/Rondas/Condomínio. Cadastro de demanda e mensagens privadas já funcionavam pra qualquer perfil, sem mudança nenhuma nesses dois módulos.
+  - **Pacotes novos `espacocomum/` e `evento/`** - `EspacoComumService` copia o padrão de `EtiquetaService` (CRUD simples, sem exclusão física). `EventoService`: `criar` (só morador, valida data não-passado e ao menos 1 pessoa via bean validation), `listarMeusEventos` (morador, sem paginação), `listarPagina` (porteiro OU perfil completo, `JpaSpecificationExecutor` - nunca `@Query` com `:param IS NULL OR`, mesma lição da v181), `liberarVeiculo`/`liberarPessoa` (toggle - chamar de novo desfaz, corrige engano sem endpoint separado). Carga em lote (veículos/pessoas/unidade de todos os eventos da página em 3 queries, não uma por evento) evita N+1 na listagem paginada.
+  - **`Autorizacao.ehPorteiroOuPerfilCompleto`** (novo helper) - `porteiro` É perfil restrito, por isso não reaproveita `ehPerfilCompletoDoCondominio` direto.
+  - **Não é sistema de reserva**: sem checagem de conflito entre eventos no mesmo espaço/dia - é só um registro pra portaria consultar, igual o pedido descreve.
+  - **Frontend**: aba nova "Espaços de Lazer" em `/condominios` (mesmo padrão visual/estrutural da aba Etiquetas). Tela `/eventos` (morador cria e vê os próprios, com contador "X/Y liberados" por evento). Tela `/portaria` (porteiro + perfil completo) - calendário mensal **caseiro** (mesmo grid de `sino-tarefas.tsx`, sem lib nova), carrega o mês inteiro de uma vez e filtra o dia clicado em memória; cada evento expandido mostra checkbox de liberação por item. `destinoPosLogin`: `porteiro` cai direto em `/portaria` (como `rondista` cai em `/ronda`).
+  - **Testado ao vivo**: 3 funcionários/morador de teste (porteiro, rondista, morador) - cadastro de evento com veículo+2 pessoas, validação de data no passado (400) e sem pessoa (400), listagem paginada da portaria com o evento certo, liberar/desliberar veículo e pessoa (toggle, `liberadoPorNome`/`liberadoEm` corretos), 403 pra rondista em `/api/eventos/pagina`, criação de espaço comum pelo porteiro e visibilidade imediata pro morador na combo de local. Testado também no browser (menu escondendo Kanban/Rondas/Condomínio pro porteiro, formulário do morador, clique no checkbox de liberação na tela). Dados de teste limpos.
+
 ## Estado atual (v187)
 
 - **Filtro por número da demanda na listagem (v187, pedido do Romulo)** - "coloque um filtro por número da demanda... fácil de achar quando alguém falar apenas o número." Sem migration.

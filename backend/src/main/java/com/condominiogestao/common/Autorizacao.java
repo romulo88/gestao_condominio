@@ -91,6 +91,24 @@ public final class Autorizacao {
         }
     }
 
+    /** Perfil `porteiro` OU perfil completo (síndico, sub-síndico, encarregado, supervisor)
+     * deste condomínio - pedido do Romulo: portaria vê o calendário de eventos e libera
+     * pessoa/veículo, e um perfil completo cobre o porteiro se precisar (mesmo espírito de
+     * {@link #ehPerfilCompletoDoCondominio} pra Rondas). `porteiro` É perfil restrito (ver
+     * {@link FuncionarioPerfil#acessoRestrito}), por isso não dá pra reusar aquele método
+     * direto - aqui ele entra como uma exceção adicional. */
+    public static boolean ehPorteiroOuPerfilCompleto(ContextoAutenticado contexto, Integer condominioId) {
+        return ehFuncionarioDoCondominio(contexto, condominioId)
+                && (FuncionarioPerfil.porteiro.name().equals(contexto.perfil())
+                        || !FuncionarioPerfil.acessoRestrito(contexto.perfil()));
+    }
+
+    public static void exigirPorteiroOuPerfilCompleto(ContextoAutenticado contexto, Integer condominioId) {
+        if (!ehPorteiroOuPerfilCompleto(contexto, condominioId)) {
+            throw new ForbiddenException("Só porteiro, síndico, sub-síndico, encarregado ou supervisor deste condomínio pode fazer isso");
+        }
+    }
+
     /** Ações restritas ao administrador global (ex: criar/desativar condomínio, criar outro administrador). */
     public static void exigirAdministrador(ContextoAutenticado contexto) {
         if (!ehAdministrador(contexto)) {
