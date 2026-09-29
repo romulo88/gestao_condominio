@@ -23,8 +23,11 @@ public record EventoResponse(
         List<EventoPessoaResponse> pessoas,
         LocalDateTime createdAt) {
 
+    /** {@code podeVerFoto} - sempre `Autorizacao.ehPorteiroOuPerfilCompleto(...)`, nunca
+     * "é dono do evento" - a foto da pessoa é restrita mesmo pro morador que cadastrou (ver
+     * {@link EventoPessoaResponse}). */
     public static EventoResponse from(
-            Evento evento, String unidade, List<EventoVeiculo> veiculos, List<EventoPessoa> pessoas) {
+            Evento evento, String unidade, List<EventoVeiculo> veiculos, List<EventoPessoa> pessoas, boolean podeVerFoto) {
         return new EventoResponse(
                 evento.getId(),
                 evento.getCondominio().getId(),
@@ -36,7 +39,7 @@ public record EventoResponse(
                 evento.getMorador().getNome(),
                 unidade,
                 veiculos.stream().map(EventoVeiculoResponse::from).toList(),
-                pessoas.stream().map(EventoPessoaResponse::from).toList(),
+                pessoas.stream().map(p -> EventoPessoaResponse.from(p, podeVerFoto)).toList(),
                 evento.getCreatedAt());
     }
 }

@@ -17,7 +17,9 @@ import lombok.Setter;
 
 /** Uma pessoa esperada num {@link Evento} - liberação por item (ver {@link EventoService}).
  * {@code documento} é texto livre (ex.: "RG 12.345.678-9") - a portaria confere o
- * documento físico contra o que foi digitado, sem foto/upload nesta feature. */
+ * documento físico contra o que foi digitado. Foto (pedido do Romulo: registro de
+ * segurança, opcional) é uma ação independente da liberação - ver {@code
+ * EventoService.enviarFotoPessoa}. */
 @Entity
 @Table(name = "evento_pessoas")
 @Getter
@@ -50,4 +52,23 @@ public class EventoPessoa {
 
     @Column(name = "liberado_em")
     private LocalDateTime liberadoEm;
+
+    /** Foto opcional (pedido do Romulo: registro de segurança), independente de
+     * {@code liberado} - o porteiro pode tirar antes, depois ou nunca. Guarda a CHAVE do
+     * objeto no bucket (mesmo padrão de {@code DemandaDocumento.url}), não uma URL. */
+    @Column(name = "foto_chave")
+    private String fotoChave;
+
+    @Column(name = "foto_tipo_mime")
+    private String fotoTipoMime;
+
+    @Column(name = "foto_tamanho_bytes")
+    private Integer fotoTamanhoBytes;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_funcionario_foto")
+    private Funcionario funcionarioFoto;
+
+    @Column(name = "foto_em")
+    private LocalDateTime fotoEm;
 }

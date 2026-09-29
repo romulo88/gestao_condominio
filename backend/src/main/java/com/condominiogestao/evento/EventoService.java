@@ -22,7 +22,11 @@ import com.condominiogestao.funcionario.FuncionarioRepository;
 import com.condominiogestao.morador.Morador;
 import com.condominiogestao.morador.MoradorCondominioRepository;
 import com.condominiogestao.morador.MoradorRepository;
+import com.condominiogestao.parametro.ParametroService;
 import com.condominiogestao.security.ContextoAutenticado;
+import io.minio.MinioClient;
+import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -33,12 +37,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Cadastro de eventos pelo morador (festa/visita, pedido do Romulo) - substitui o aviso
@@ -59,6 +66,12 @@ public class EventoService {
     private final MoradorCondominioRepository moradorCondominioRepository;
     private final EspacoComumRepository espacoComumRepository;
     private final FuncionarioRepository funcionarioRepository;
+    private final ParametroService parametroService;
+    private final MinioClient minioClient;
+    private final String bucket;
+
+    private static final Set<String> TIPOS_IMAGEM_PERMITIDOS = Set.of("image/jpeg", "image/png", "image/webp");
+    private static final int FOTO_TAMANHO_MAXIMO_MB_PADRAO = 8;
 
     public EventoService(
             EventoRepository repository,
@@ -68,7 +81,10 @@ public class EventoService {
             MoradorRepository moradorRepository,
             MoradorCondominioRepository moradorCondominioRepository,
             EspacoComumRepository espacoComumRepository,
-            FuncionarioRepository funcionarioRepository) {
+            FuncionarioRepository funcionarioRepository,
+            ParametroService parametroService,
+            MinioClient minioClient,
+            @Value("${storage.bucket}") String bucket) {
         this.repository = repository;
         this.veiculoRepository = veiculoRepository;
         this.pessoaRepository = pessoaRepository;
@@ -77,6 +93,9 @@ public class EventoService {
         this.moradorCondominioRepository = moradorCondominioRepository;
         this.espacoComumRepository = espacoComumRepository;
         this.funcionarioRepository = funcionarioRepository;
+        this.parametroService = parametroService;
+        this.minioClient = minioClient;
+        this.bucket = bucket;
     }
 
     @Transactional
@@ -121,7 +140,8 @@ public class EventoService {
         }).toList();
         pessoaRepository.saveAll(pessoas);
 
-        return EventoResponse.from(salvo, buscarUnidade(morador.getId(), contexto.condominioId()), veiculos, pessoas);
+        // Morador nunca vê fotoUrl - nem faz sentido aqui, evento recém-criado não tem foto ainda.
+        return EventoResponse.from(salvo, buscarUnidade(morador.getId(), contexto.condominioId()), veiculos, pessoas, false);
     }
 
     /**
@@ -272,12 +292,14 @@ public class EventoService {
         exigirMorador(contexto);
         List<Evento> eventos = repository.findByMoradorIdOrderByDataDesc(contexto.pessoaId());
         String unidade = buscarUnidade(contexto.pessoaId(), contexto.condominioId());
+        // Morador nunca vê fotoUrl, mesmo nos próprios eventos.
         return eventos.stream()
                 .map(evento -> EventoResponse.from(
                         evento,
                         unidade,
                         veiculoRepository.findByEventoIdOrderById(evento.getId()),
-                        pessoaRepository.findByEventoIdOrderById(evento.getId())))
+                        pessoaRepository.findByEventoIdOrderById(evento.getId()),
+                        false))
                 .toList();
     }
 
@@ -304,14 +326,17 @@ public class EventoService {
         Evento evento = buscarEvento(eventoId);
         boolean ehDono = evento.getMorador().getId().equals(contexto.pessoaId())
                 && TipoPessoa.morador.name().equals(contexto.tipoPapel());
-        if (!ehDono && !Autorizacao.ehPorteiroOuPerfilCompleto(contexto, evento.getCondominio().getId())) {
+        boolean podeVerFoto = Autorizacao.ehPorteiroOuPerfilCompleto(contexto, evento.getCondominio().getId());
+        if (!ehDono && !podeVerFoto) {
             throw new ForbiddenException("Só o próprio morador, o porteiro ou um perfil completo deste condomínio pode ver esse evento");
         }
 
         List<EventoVeiculo> veiculos = veiculoRepository.findByEventoIdOrderById(eventoId);
         List<EventoPessoa> pessoas = pessoaRepository.findByEventoIdOrderById(eventoId);
         String unidade = buscarUnidade(evento.getMorador().getId(), evento.getCondominio().getId());
-        return EventoResponse.from(evento, unidade, veiculos, pessoas);
+        // podeVerFoto é sempre "é porteiro/perfil completo", nunca "é dono" - o morador não
+        // vê a foto nem no próprio evento (ver EventoPessoaResponse).
+        return EventoResponse.from(evento, unidade, veiculos, pessoas, podeVerFoto);
     }
 
     @Transactional
@@ -339,13 +364,7 @@ public class EventoService {
     public EventoResponse liberarPessoa(ContextoAutenticado contexto, Integer eventoId, Integer pessoaId) {
         Evento evento = buscarEvento(eventoId);
         Autorizacao.exigirPorteiroOuPerfilCompleto(contexto, evento.getCondominio().getId());
-
-        EventoPessoa pessoa = pessoaRepository
-                .findById(pessoaId)
-                .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + pessoaId));
-        if (!pessoa.getEvento().getId().equals(eventoId)) {
-            throw new ResourceNotFoundException("Pessoa não encontrada nesse evento: " + pessoaId);
-        }
+        EventoPessoa pessoa = buscarPessoaDoEvento(eventoId, pessoaId);
 
         boolean novoValor = !pessoa.isLiberado();
         pessoa.setLiberado(novoValor);
@@ -354,6 +373,118 @@ public class EventoService {
         pessoaRepository.save(pessoa);
 
         return buscarDetalhe(contexto, eventoId);
+    }
+
+    /**
+     * Foto opcional da pessoa (pedido do Romulo: registro de segurança - "em caso de
+     * mal-feito, dá pra identificar quem entrou") - ação independente de liberar, sempre
+     * restrita a porteiro/perfil completo (nunca o morador, mesmo dono do evento). Se já
+     * tinha foto, substitui - remove o objeto velho do bucket antes de subir o novo (mesma
+     * ordem segura de {@code DemandaDocumentoService.upload}: só grava na entidade depois
+     * do upload dar certo).
+     */
+    @Transactional
+    public EventoResponse enviarFotoPessoa(ContextoAutenticado contexto, Integer eventoId, Integer pessoaId, MultipartFile arquivo) {
+        Evento evento = buscarEvento(eventoId);
+        Autorizacao.exigirPorteiroOuPerfilCompleto(contexto, evento.getCondominio().getId());
+        EventoPessoa pessoa = buscarPessoaDoEvento(eventoId, pessoaId);
+
+        if (arquivo.isEmpty()) {
+            throw new InvalidRequestException("Arquivo vazio");
+        }
+        String tipoMime = arquivo.getContentType();
+        if (tipoMime == null || !TIPOS_IMAGEM_PERMITIDOS.contains(tipoMime)) {
+            throw new InvalidRequestException("Só imagem (jpeg, png ou webp) é aceita aqui - recebido: " + tipoMime);
+        }
+        int tamanhoMaximoMb = parametroService.getInt("tamanhoMaximoFotoMb", FOTO_TAMANHO_MAXIMO_MB_PADRAO);
+        if (arquivo.getSize() > tamanhoMaximoMb * 1024L * 1024L) {
+            throw new InvalidRequestException("Imagem não pode passar de " + tamanhoMaximoMb + "MB");
+        }
+
+        String chaveAntiga = pessoa.getFotoChave();
+        String chaveNova = "eventos/%d/pessoas/%d/%s%s".formatted(eventoId, pessoaId, UUID.randomUUID(), extensaoPara(tipoMime));
+        try (var entrada = arquivo.getInputStream()) {
+            minioClient.putObject(PutObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(chaveNova)
+                    .stream(entrada, arquivo.getSize(), -1)
+                    .contentType(tipoMime)
+                    .build());
+        } catch (Exception ex) {
+            throw new RuntimeException("Falha ao enviar a foto pro storage", ex);
+        }
+        if (chaveAntiga != null) {
+            removerObjetoStorage(chaveAntiga);
+        }
+
+        pessoa.setFotoChave(chaveNova);
+        pessoa.setFotoTipoMime(tipoMime);
+        pessoa.setFotoTamanhoBytes((int) arquivo.getSize());
+        pessoa.setFuncionarioFoto(buscarFuncionario(contexto.pessoaId()));
+        pessoa.setFotoEm(LocalDateTime.now());
+        pessoaRepository.save(pessoa);
+
+        return buscarDetalhe(contexto, eventoId);
+    }
+
+    /** Remoção física de verdade (não é um registro de auditoria, só um arquivo). */
+    @Transactional
+    public EventoResponse removerFotoPessoa(ContextoAutenticado contexto, Integer eventoId, Integer pessoaId) {
+        Evento evento = buscarEvento(eventoId);
+        Autorizacao.exigirPorteiroOuPerfilCompleto(contexto, evento.getCondominio().getId());
+        EventoPessoa pessoa = buscarPessoaDoEvento(eventoId, pessoaId);
+
+        if (pessoa.getFotoChave() != null) {
+            removerObjetoStorage(pessoa.getFotoChave());
+        }
+        pessoa.setFotoChave(null);
+        pessoa.setFotoTipoMime(null);
+        pessoa.setFotoTamanhoBytes(null);
+        pessoa.setFuncionarioFoto(null);
+        pessoa.setFotoEm(null);
+        pessoaRepository.save(pessoa);
+
+        return buscarDetalhe(contexto, eventoId);
+    }
+
+    /** Usado por {@code EventoController.baixarFotoPessoa} pra montar a resposta via
+     * {@code ArquivoStorageService.baixar(...)} - mesma checagem de autorização de
+     * {@link #enviarFotoPessoa}/{@link #removerFotoPessoa}. */
+    public EventoPessoa buscarFotoPessoa(ContextoAutenticado contexto, Integer eventoId, Integer pessoaId) {
+        Evento evento = buscarEvento(eventoId);
+        Autorizacao.exigirPorteiroOuPerfilCompleto(contexto, evento.getCondominio().getId());
+        EventoPessoa pessoa = buscarPessoaDoEvento(eventoId, pessoaId);
+        if (pessoa.getFotoChave() == null) {
+            throw new ResourceNotFoundException("Essa pessoa ainda não tem foto");
+        }
+        return pessoa;
+    }
+
+    private void removerObjetoStorage(String chave) {
+        try {
+            minioClient.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(chave).build());
+        } catch (Exception ex) {
+            throw new RuntimeException("Falha ao remover a foto do storage", ex);
+        }
+    }
+
+    private String extensaoPara(String tipoMime) {
+        return switch (tipoMime) {
+            case "image/jpeg" -> ".jpg";
+            case "image/png" -> ".png";
+            case "image/webp" -> ".webp";
+            default -> "";
+        };
+    }
+
+    private EventoPessoa buscarPessoaDoEvento(Integer eventoId, Integer pessoaId) {
+        EventoPessoa pessoa = pessoaRepository
+                .findById(pessoaId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pessoa não encontrada: " + pessoaId));
+        if (!pessoa.getEvento().getId().equals(eventoId)) {
+            throw new ResourceNotFoundException("Pessoa não encontrada nesse evento: " + pessoaId);
+        }
+        return pessoa;
     }
 
     private Specification<Evento> especificacao(Integer condominioId, LocalDate dataInicio, LocalDate dataFim, Integer espacoComumId) {
@@ -397,12 +528,15 @@ public class EventoService {
             unidadePorMorador.put(vinculo.getMorador().getId(), vinculo.getNumeroUnidade());
         }
 
+        // Só porteiro/perfil completo chega em listarPagina (ver Autorizacao.
+        // exigirPorteiroOuPerfilCompleto acima) - sempre pode ver a foto.
         return eventos.stream()
                 .map(evento -> EventoResponse.from(
                         evento,
                         unidadePorMorador.get(evento.getMorador().getId()),
                         veiculosPorEvento.getOrDefault(evento.getId(), List.of()),
-                        pessoasPorEvento.getOrDefault(evento.getId(), List.of())))
+                        pessoasPorEvento.getOrDefault(evento.getId(), List.of()),
+                        true))
                 .toList();
     }
 
@@ -431,9 +565,9 @@ public class EventoService {
                 .orElse(null);
     }
 
-    /** Compartilhado por {@link #atualizar}, {@link #excluir}, {@link #adicionarPessoa} e
-     * {@link #adicionarVeiculo}: só o próprio morador dono do evento, e só enquanto a data
-     * do evento ainda não passou. {@code acao} entra na mensagem de erro. */
+    /** Compartilhado por {@link #atualizar} e {@link #excluir}: só o próprio morador dono
+     * do evento, e só enquanto a data do evento ainda não passou. {@code acao} entra na
+     * mensagem de erro. */
     private void exigirDonoDoEventoFuturo(ContextoAutenticado contexto, Evento evento, String acao) {
         if (!evento.getMorador().getId().equals(contexto.pessoaId())) {
             throw new ForbiddenException("Só o próprio morador que cadastrou pode " + acao + " nesse evento");

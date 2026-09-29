@@ -6,6 +6,7 @@ import com.condominiogestao.evento.dto.EventoCreateRequest;
 import com.condominiogestao.evento.dto.EventoResponse;
 import com.condominiogestao.evento.dto.EventoUpdateRequest;
 import com.condominiogestao.security.ContextoAutenticado;
+import com.condominiogestao.storage.ArquivoStorageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -14,8 +15,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /** Sempre opera no condomínio do próprio contexto - ver {@link EventoService}. */
 @RestController
@@ -35,9 +39,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class EventoController {
 
     private final EventoService service;
+    private final ArquivoStorageService arquivoStorageService;
 
-    public EventoController(EventoService service) {
+    public EventoController(EventoService service, ArquivoStorageService arquivoStorageService) {
         this.service = service;
+        this.arquivoStorageService = arquivoStorageService;
     }
 
     @PostMapping
@@ -143,5 +149,47 @@ public class EventoController {
     public EventoResponse liberarPessoa(
             @AuthenticationPrincipal ContextoAutenticado contexto, @PathVariable Integer id, @PathVariable Integer pessoaId) {
         return service.liberarPessoa(contexto, id, pessoaId);
+    }
+
+    @PostMapping(value = "/{id}/pessoas/{pessoaId}/foto", consumes = "multipart/form-data")
+    @Operation(summary = "Envia (ou substitui) a foto de uma pessoa do evento",
+            description = "Registro de segurança opcional (pedido do Romulo) - ação independente de liberar. Só "
+                    + "imagem (jpeg/png/webp), limite de tamanho configurável (`/api/parametros`: "
+                    + "`tamanhoMaximoFotoMb`). Só porteiro ou perfil completo deste condomínio - o morador nunca vê "
+                    + "essa foto, nem no próprio evento.")
+    @ApiResponse(responseCode = "400", description = "Não é imagem aceita, maior que o limite, ou arquivo vazio",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "403", description = "Só porteiro ou perfil completo deste condomínio",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public EventoResponse enviarFotoPessoa(
+            @AuthenticationPrincipal ContextoAutenticado contexto,
+            @PathVariable Integer id,
+            @PathVariable Integer pessoaId,
+            @RequestParam MultipartFile arquivo) {
+        return service.enviarFotoPessoa(contexto, id, pessoaId, arquivo);
+    }
+
+    @DeleteMapping("/{id}/pessoas/{pessoaId}/foto")
+    @Operation(summary = "Remove a foto de uma pessoa do evento (do storage e do banco)",
+            description = "Remoção física de verdade - é só um arquivo, não um registro de auditoria.")
+    @ApiResponse(responseCode = "403", description = "Só porteiro ou perfil completo deste condomínio",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public EventoResponse removerFotoPessoa(
+            @AuthenticationPrincipal ContextoAutenticado contexto, @PathVariable Integer id, @PathVariable Integer pessoaId) {
+        return service.removerFotoPessoa(contexto, id, pessoaId);
+    }
+
+    @GetMapping("/{id}/pessoas/{pessoaId}/foto")
+    @Operation(summary = "Serve a foto de uma pessoa do evento direto (não é link assinado do MinIO)",
+            description = "Aceita o token JWT via query string (?token=...) além do header Authorization - tag "
+                    + "<img> não manda header, ver JwtAuthenticationFilter. Só porteiro ou perfil completo.")
+    @ApiResponse(responseCode = "403", description = "Só porteiro ou perfil completo deste condomínio",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "404", description = "Essa pessoa ainda não tem foto",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public ResponseEntity<InputStreamResource> baixarFotoPessoa(
+            @AuthenticationPrincipal ContextoAutenticado contexto, @PathVariable Integer id, @PathVariable Integer pessoaId) {
+        EventoPessoa pessoa = service.buscarFotoPessoa(contexto, id, pessoaId);
+        return arquivoStorageService.baixar(pessoa.getFotoChave(), pessoa.getFotoTipoMime(), pessoa.getFotoTamanhoBytes());
     }
 }

@@ -6,6 +6,41 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v193)
+
+- **Foto opcional da pessoa ao liberar (v193, pedido do Romulo)** - registro de segurança:
+  o porteiro, ao conferir o documento e bater com o que o morador cadastrou, pode tirar uma
+  foto do rosto pelo próprio celular (clicando no nome da pessoa na tela Portaria) - "em
+  caso de mal-feito, dá pra identificar quem entrou". **Não obrigatória** e **independente
+  de liberar** (o checkbox de liberado continua a mesma ação de sempre, sem exigir foto).
+  - **Migration `V35`**: 5 colunas nullable direto em `evento_pessoas` (`foto_chave`,
+    `foto_tipo_mime`, `foto_tamanho_bytes`, `id_funcionario_foto`, `foto_em`) - 1 foto por
+    pessoa (a nova sempre substitui a anterior), sem tabela filha (diferente de
+    `demanda_documentos`, que aceita várias por demanda).
+  - **Reaproveita 100% a infra de upload já existente**: mesmo bean `MinioClient`/bucket de
+    `StorageConfig`, mesmo `ArquivoStorageService.baixar(...)` que já serve `.../arquivo` de
+    demanda e `.../foto` de perfil (o endpoint novo `GET .../foto` já cai no allowlist de
+    sufixos do `JwtAuthenticationFilter` pro token JWT via query string - `<img src>` não
+    manda header Authorization), mesmo parâmetro configurável `tamanhoMaximoFotoMb`
+    (`ParametroService`) que já vale pra foto de demanda - nenhum parâmetro novo.
+  - **`EventoService`**: `enviarFotoPessoa`/`removerFotoPessoa`/`buscarFotoPessoa`, sempre
+    `Autorizacao.exigirPorteiroOuPerfilCompleto` - **nunca o morador**, mesmo sendo o dono
+    do evento. `EventoResponse.from`/`EventoPessoaResponse.from` ganharam um parâmetro
+    `podeVerFoto` (calculado por quem chama, nunca "é dono") pra redigir `fotoUrl` - `null`
+    pra quem não pode ver.
+  - **Frontend** (`/portaria`): nome da pessoa virou um botão clicável (separado do
+    checkbox de liberar - clicar em qualquer um dos dois não aciona o outro) que abre um
+    modal com a foto atual (ou "Sem foto ainda"), botão "Tirar foto"/"Trocar foto"
+    (`<input type="file" accept="image/*" capture="environment">` - câmera traseira,
+    upload imediato ao escolher) e "Remover foto". **Sem expiração automática** - decisão
+    consciente, o projeto não tem nenhum mecanismo de limpeza por tempo (nem job agendado,
+    nem lifecycle policy no bucket); implementar isso ficaria pra uma feature própria.
+  - **Testado ao vivo**: upload/troca (objeto antigo removido do bucket, sem órfão -
+    confirmado via `mc find`)/remoção via API; `fotoUrl: null` pro morador mesmo no próprio
+    evento; 403 pro morador tentando baixar a foto direto mesmo sabendo a URL; 400 pra tipo
+    de arquivo inválido; testado no browser (nome vira link azul, modal abre com "Sem foto
+    ainda", botão "Tirar foto" dispara o input corretamente). Dados de teste limpos.
+
 ## Estado atual (v192)
 
 - **Edição de Evento reformulada - granularidade por item (v192, pedido do Romulo)** - sem
