@@ -77,6 +77,16 @@ public class Pessoa {
     @Column(name = "ultimo_login")
     private LocalDateTime ultimoLogin;
 
+    /** Versão do {@code TermosResponsabilidade.TEXTO} que essa pessoa aceitou - {@code null}
+     * até o primeiro aceite. Comparada contra {@code TermosResponsabilidade.VERSAO_ATUAL} a
+     * cada login (nunca em tempo real durante a sessão) pra decidir se mostra o aviso de
+     * novo - ver {@code TermosService}. */
+    @Column(name = "termos_versao_aceita")
+    private Integer termosVersaoAceita;
+
+    @Column(name = "termos_aceitos_em")
+    private LocalDateTime termosAceitosEm;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

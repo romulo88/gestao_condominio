@@ -22,6 +22,7 @@ import com.condominiogestao.pessoa.Pessoa;
 import com.condominiogestao.pessoa.PessoaRepository;
 import com.condominiogestao.security.ContextoAutenticado;
 import com.condominiogestao.security.JwtService;
+import com.condominiogestao.termos.TermosService;
 import io.jsonwebtoken.Claims;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -46,6 +47,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final String senhaPadrao;
     private final SenhaProvisoriaService senhaProvisoriaService;
+    private final TermosService termosService;
 
     public AuthService(
             PessoaRepository pessoaRepository,
@@ -57,7 +59,8 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             @Value("${auth.senha-padrao}") String senhaPadrao,
-            SenhaProvisoriaService senhaProvisoriaService) {
+            SenhaProvisoriaService senhaProvisoriaService,
+            TermosService termosService) {
         this.pessoaRepository = pessoaRepository;
         this.funcionarioRepository = funcionarioRepository;
         this.funcionarioCondominioRepository = funcionarioCondominioRepository;
@@ -68,6 +71,7 @@ public class AuthService {
         this.jwtService = jwtService;
         this.senhaPadrao = senhaPadrao;
         this.senhaProvisoriaService = senhaProvisoriaService;
+        this.termosService = termosService;
     }
 
     @Transactional
@@ -101,14 +105,17 @@ public class AuthService {
         pessoa.setUltimoLogin(LocalDateTime.now());
         pessoaRepository.save(pessoa);
 
+        var termosPendente = termosService.calcularPendente(pessoa);
+
         if (contextos.size() == 1) {
             String token = jwtService.gerarTokenCompleto(pessoa, contextos.get(0));
-            return new LoginResponse(pessoa.getId(), pessoa.getNome(), contextos, token, null, ultimoLoginAnterior);
+            return new LoginResponse(
+                    pessoa.getId(), pessoa.getNome(), contextos, token, null, ultimoLoginAnterior, termosPendente);
         }
 
         String preAuthToken = jwtService.gerarTokenPreAuth(pessoa);
         return new LoginResponse(
-                pessoa.getId(), pessoa.getNome(), contextos, null, preAuthToken, ultimoLoginAnterior);
+                pessoa.getId(), pessoa.getNome(), contextos, null, preAuthToken, ultimoLoginAnterior, termosPendente);
     }
 
     public TokenResponse selecionarContexto(String preAuthToken, SelecionarContextoRequest request) {

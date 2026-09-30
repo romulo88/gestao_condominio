@@ -1,5 +1,6 @@
 package com.condominiogestao.auth.dto;
 
+import com.condominiogestao.termos.dto.TermosPendenteResponse;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -12,6 +13,12 @@ import java.util.List;
  * (null se é a primeira vez que essa pessoa loga) - o frontend guarda isso na sessão pra
  * usar como "desde quando" no alerta de mudança de status do morador, já que por essa
  * altura o backend já sobrescreveu o campo com o timestamp de agora.
+ *
+ * <p>{@code termosPendente}: não nulo quando a pessoa precisa aceitar o termo de
+ * responsabilidade (nunca aceitou, ou aceitou uma versão anterior à vigente) - ver {@code
+ * TermosService}. Calculado independente de {@code contextos}/{@code token}, então vem
+ * preenchido tanto no login direto (1 vínculo) quanto no fluxo de {@code preAuthToken}
+ * (a pessoa é a mesma, o termo não depende de qual contexto ela escolhe).
  */
 public record LoginResponse(
         Integer pessoaId,
@@ -19,5 +26,6 @@ public record LoginResponse(
         List<ContextoDto> contextos,
         String token,
         String preAuthToken,
-        LocalDateTime ultimoLoginAnterior) {
+        LocalDateTime ultimoLoginAnterior,
+        TermosPendenteResponse termosPendente) {
 }

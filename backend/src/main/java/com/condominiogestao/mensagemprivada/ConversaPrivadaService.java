@@ -1,5 +1,6 @@
 package com.condominiogestao.mensagemprivada;
 
+import com.condominiogestao.common.Autorizacao;
 import com.condominiogestao.common.ForbiddenException;
 import com.condominiogestao.common.InvalidRequestException;
 import com.condominiogestao.common.PaginaResponse;
@@ -16,6 +17,7 @@ import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaCreateRequest;
 import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaDestinatarioResponse;
 import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaDetalheResponse;
 import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaResumoResponse;
+import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaVisualizacaoResponse;
 import com.condominiogestao.mensagemprivada.dto.MensagemPrivadaCreateRequest;
 import com.condominiogestao.mensagemprivada.dto.MensagemPrivadaDocumentoResponse;
 import com.condominiogestao.mensagemprivada.dto.MensagemPrivadaResponse;
@@ -53,6 +55,7 @@ public class ConversaPrivadaService {
 
     private final ConversaPrivadaRepository repository;
     private final ConversaPrivadaDestinatarioRepository destinatarioRepository;
+    private final ConversaPrivadaVisualizacaoRepository visualizacaoRepository;
     private final MensagemPrivadaRepository mensagemRepository;
     private final MensagemPrivadaDocumentoRepository documentoRepository;
     private final CondominioRepository condominioRepository;
@@ -64,6 +67,7 @@ public class ConversaPrivadaService {
     public ConversaPrivadaService(
             ConversaPrivadaRepository repository,
             ConversaPrivadaDestinatarioRepository destinatarioRepository,
+            ConversaPrivadaVisualizacaoRepository visualizacaoRepository,
             MensagemPrivadaRepository mensagemRepository,
             MensagemPrivadaDocumentoRepository documentoRepository,
             CondominioRepository condominioRepository,
@@ -73,6 +77,7 @@ public class ConversaPrivadaService {
             FuncionarioCondominioRepository funcionarioCondominioRepository) {
         this.repository = repository;
         this.destinatarioRepository = destinatarioRepository;
+        this.visualizacaoRepository = visualizacaoRepository;
         this.mensagemRepository = mensagemRepository;
         this.documentoRepository = documentoRepository;
         this.condominioRepository = condominioRepository;
@@ -275,19 +280,47 @@ public class ConversaPrivadaService {
     }
 
     /** Atualiza o "visto por último" de quem está logado - autor usa a coluna na própria
-     * conversa, destinatário usa a linha dele em {@link ConversaPrivadaDestinatario}. */
+     * conversa, destinatário usa a linha dele em {@link ConversaPrivadaDestinatario} - e
+     * grava uma linha no log de auditoria (histórico completo, nunca sobrescrito). */
     private void marcarComoVista(ContextoAutenticado contexto, ConversaPrivada conversa) {
         LocalDateTime agora = LocalDateTime.now();
         if (ehAutor(contexto, conversa)) {
             conversa.setAutorUltimaVisualizacaoEm(agora);
             repository.save(conversa);
-            return;
+        } else {
+            destinatarioRepository.findByConversaIdAndFuncionarioId(conversa.getId(), contexto.pessoaId())
+                    .ifPresent(destinatario -> {
+                        destinatario.setUltimaVisualizacaoEm(agora);
+                        destinatarioRepository.save(destinatario);
+                    });
         }
-        destinatarioRepository.findByConversaIdAndFuncionarioId(conversa.getId(), contexto.pessoaId())
-                .ifPresent(destinatario -> {
-                    destinatario.setUltimaVisualizacaoEm(agora);
-                    destinatarioRepository.save(destinatario);
-                });
+        registrarVisualizacao(contexto, conversa);
+    }
+
+    /** Log de auditoria (pedido do Romulo: se uma mensagem vazar, poder rastrear quem abriu
+     * aquela conversa e quando). Grava 1 linha POR abertura - nunca atualiza uma linha
+     * existente, diferente do "visto por último" acima. */
+    private void registrarVisualizacao(ContextoAutenticado contexto, ConversaPrivada conversa) {
+        ConversaPrivadaVisualizacao visualizacao = new ConversaPrivadaVisualizacao();
+        visualizacao.setConversa(conversa);
+        if (ehFuncionario(contexto)) {
+            visualizacao.setFuncionario(buscarFuncionario(contexto.pessoaId()));
+        } else {
+            visualizacao.setMorador(buscarMorador(contexto.pessoaId()));
+        }
+        visualizacaoRepository.save(visualizacao);
+    }
+
+    /** Auditoria (pedido do Romulo) - quem abriu essa conversa e quando, histórico completo
+     * (não só a última vez). Só perfil completo do condomínio, mesmo sem participar da
+     * conversa - é justamente o poder de investigação que {@link #exigirParticipante} nega
+     * pro conteúdo; aqui só metadado de "quem viu", nunca o texto das mensagens. */
+    public List<ConversaPrivadaVisualizacaoResponse> listarVisualizacoes(ContextoAutenticado contexto, Integer id) {
+        ConversaPrivada conversa = buscarConversa(id);
+        Autorizacao.exigirPerfilCompletoDoCondominio(contexto, conversa.getCondominio().getId());
+        return visualizacaoRepository.findByConversaIdOrderByVisualizadoEmDesc(id).stream()
+                .map(ConversaPrivadaVisualizacaoResponse::from)
+                .toList();
     }
 
     private ConversaPrivadaResumoResponse montarResumo(

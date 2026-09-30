@@ -6,6 +6,7 @@ import com.condominiogestao.mensagemprivada.dto.CandidatoDestinatarioResponse;
 import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaCreateRequest;
 import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaDetalheResponse;
 import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaResumoResponse;
+import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaVisualizacaoResponse;
 import com.condominiogestao.mensagemprivada.dto.MensagemPrivadaCreateRequest;
 import com.condominiogestao.mensagemprivada.dto.MensagemPrivadaResponse;
 import com.condominiogestao.security.ContextoAutenticado;
@@ -73,6 +74,19 @@ public class ConversaPrivadaController {
     public ConversaPrivadaDetalheResponse buscarDetalhe(
             @AuthenticationPrincipal ContextoAutenticado contexto, @PathVariable Integer id) {
         return service.buscarDetalhe(contexto, id);
+    }
+
+    @GetMapping("/{id}/visualizacoes")
+    @Operation(summary = "Auditoria: quem abriu essa conversa e quando",
+            description = "Histórico completo de aberturas (não só a última) - só perfil completo do "
+                    + "condomínio (síndico/sub-síndico/supervisor/encarregado), mesmo sem participar da "
+                    + "conversa. Nunca expõe o conteúdo das mensagens, só quem viu e quando - pensado pra "
+                    + "investigar uma suspeita de vazamento.")
+    @ApiResponse(responseCode = "403", description = "Só perfil completo do condomínio pode ver a auditoria",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public List<ConversaPrivadaVisualizacaoResponse> listarVisualizacoes(
+            @AuthenticationPrincipal ContextoAutenticado contexto, @PathVariable Integer id) {
+        return service.listarVisualizacoes(contexto, id);
     }
 
     @PostMapping

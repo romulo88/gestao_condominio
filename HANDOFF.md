@@ -6,6 +6,69 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v195)
+
+- **Termo de responsabilidade no primeiro login (v195, pedido do Romulo)** - "pra que as
+  pessoas tenham responsabilidade com os dados do sistema", não só mensagem privada: modal
+  bloqueante (sem botão de fechar, sem clique fora) exibido logo após o login, cobrindo
+  todo o sistema.
+  - **Migration `V37`**: `pessoas.termos_versao_aceita` (nullable) + `termos_aceitos_em`.
+  - **Texto em CÓDIGO, nunca em `Parametro`** - decisão consciente (discutida com o
+    Romulo): `Parametro` é editado livremente pelo admin sem controle de versão, e mudar
+    esse texto tem peso jurídico - merece revisão/deploy, não edição solta em tela. Classe
+    nova `TermosResponsabilidade` (backend) guarda `VERSAO_ATUAL` (int) + `TEXTO` juntos.
+  - **Mecanismo de "mostrar de novo" quando o texto mudar**: `AuthService.login` calcula
+    `termosPendente` (não nulo se `pessoa.termosVersaoAceita` for `null` ou menor que
+    `VERSAO_ATUAL`) e devolve dentro de `LoginResponse` - calculado ANTES da escolha de
+    contexto (vale pra pessoa, não pro papel escolhido), então vem preenchido tanto no
+    login direto quanto no fluxo de `preAuthToken`. Pra publicar um texto novo, só subir a
+    constante (`1` → `2`) e trocar `TEXTO` - todo mundo com versão menor vê o aviso de novo
+    no próximo login, sem UPDATE em massa no banco.
+  - **`POST /api/termos/aceitar`** (autenticado): grava `termosVersaoAceita`/
+    `termosAceitosEm` de quem está logado.
+  - **Frontend**: `AppShell` guarda `termosPendente` num `useState` inicializado da sessão
+    e renderiza o modal (`z-[60]`, acima de qualquer outro) enquanto não for `null` -
+    bloqueia a tela inteira até "Li e concordo". Trocar de perfil carrega o valor de sempre
+    (mesmo espírito de `ultimoLoginAnterior` - não é um login novo).
+  - **Testado ao vivo**: pessoa nova loga → `termosPendente` preenchido → modal aparece
+    cobrindo a tela → aceitar grava no banco (`termos_versao_aceita=1`) → modal some →
+    segundo login já vem com `termosPendente: null`. Dados de teste limpos.
+
+## Estado atual (v194)
+
+- **Log de auditoria + marca d'água em mensagem privada (v194, pedido do Romulo)** -
+  proteção contra vazamento de conversa privada: "eu, como dono do sistema, como me
+  resguardo?". Duas peças, nenhuma impede print (impossível), as duas criam rastreabilidade/
+  dissuasão:
+  - **Migration `V36`**: tabela nova `conversas_privadas_visualizacoes`, **append-only**
+    (uma linha POR abertura, nunca atualizada/apagada) - primeira tabela de log do projeto.
+    Diferente de `conversas_privadas.autor_ultima_visualizacao_em`/
+    `conversas_privadas_destinatarios.ultima_visualizacao_em` (V22), que guardam só a
+    ÚLTIMA vez (usadas pro cálculo de "pendente"). Gravada dentro do mesmo
+    `ConversaPrivadaService.marcarComoVista` que já roda ao abrir o chat - sem endpoint novo
+    de "marcar visto", só mais um insert na mesma transação.
+  - **Endpoint de auditoria** `GET /api/conversas-privadas/{id}/visualizacoes` - decisão
+    consciente de **furar a privacidade estrita só pra metadado** (nunca o texto): só perfil
+    completo do condomínio (`Autorizacao.exigirPerfilCompletoDoCondominio`) pode ver quem
+    abriu uma conversa e quando, **mesmo sem participar dela** - é o poder de investigação
+    que faz sentido pro síndico existir, já que por regra (V22) nem síndico vê o conteúdo.
+    Testado: síndico vê a lista; morador (não é perfil completo) recebe 403.
+  - **Frontend** (`/mensagens-privadas`): dentro do chat aberto, link "Ver quem visualizou
+    essa conversa" (só aparece pra perfil completo) que busca a lista sob demanda -
+    decisão de não construir uma tela de administração nova agora, só expor o log de forma
+    utilizável sem crescer escopo.
+  - **Marca d'água**: overlay sobre a área de mensagens com o nome de quem está vendo +
+    data/hora atual (atualiza a cada minuto enquanto o chat fica aberto), tiled via SVG em
+    `background-image` (cobre qualquer altura de conversa, diferente de uma grade fixa de
+    `<span>`) + `mix-blend-mode: difference` com texto branco - fica legível tanto sobre
+    balão escuro quanto claro sem precisar de duas cores. `pointer-events-none`, nunca
+    bloqueia clique nos botões por baixo.
+  - **Testado ao vivo**: conversa criada, aberta pelo síndico (2 linhas de log: a do
+    morador ao criar + a do síndico ao abrir), auditoria retornada certa via API e no
+    browser; 403 confirmado pro morador; marca d'água confirmada via DOM (`background-image`
+    decodificado contém nome + hora certos, `mix-blend-mode: difference`, `opacity: 0.4`,
+    cobrindo a área certa). Dados de teste limpos.
+
 ## Estado atual (v193)
 
 - **Foto opcional da pessoa ao liberar (v193, pedido do Romulo)** - registro de segurança:
