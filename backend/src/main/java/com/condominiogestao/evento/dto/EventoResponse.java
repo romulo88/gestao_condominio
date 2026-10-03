@@ -16,6 +16,9 @@ public record EventoResponse(
         String motivo,
         LocalDate data,
         String horario,
+        /** Pedido do Romulo: reforma na própria unidade - um evento entre vários criados
+         * pelo mesmo pedido de reforma (um por dia do intervalo), cada um independente. */
+        boolean reforma,
         String moradorNome,
         /** Número do apto/casa (vínculo do morador nesse condomínio) - null se não achar. */
         String unidade,
@@ -36,6 +39,7 @@ public record EventoResponse(
                 evento.getMotivo(),
                 evento.getData(),
                 evento.getHorario(),
+                evento.isReforma(),
                 evento.getMorador().getNome(),
                 unidade,
                 veiculos.stream().map(EventoVeiculoResponse::from).toList(),

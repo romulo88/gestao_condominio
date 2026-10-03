@@ -14,9 +14,11 @@ import com.condominiogestao.espacocomum.EspacoComum;
 import com.condominiogestao.espacocomum.EspacoComumRepository;
 import com.condominiogestao.evento.dto.EventoCreateRequest;
 import com.condominiogestao.evento.dto.EventoPessoaAtualizarRequest;
+import com.condominiogestao.evento.dto.EventoPessoaCandidatoResponse;
 import com.condominiogestao.evento.dto.EventoResponse;
 import com.condominiogestao.evento.dto.EventoUpdateRequest;
 import com.condominiogestao.evento.dto.EventoVeiculoAtualizarRequest;
+import com.condominiogestao.evento.dto.EventoVeiculoCandidatoResponse;
 import com.condominiogestao.funcionario.Funcionario;
 import com.condominiogestao.funcionario.FuncionarioRepository;
 import com.condominiogestao.morador.Morador;
@@ -24,12 +26,15 @@ import com.condominiogestao.morador.MoradorCondominioRepository;
 import com.condominiogestao.morador.MoradorRepository;
 import com.condominiogestao.parametro.ParametroService;
 import com.condominiogestao.security.ContextoAutenticado;
+import io.minio.CopyObjectArgs;
+import io.minio.CopySource;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
 import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -98,13 +103,21 @@ public class EventoService {
         this.bucket = bucket;
     }
 
+    /**
+     * {@code reforma} (pedido do Romulo) gera um {@link Evento} por dia do intervalo
+     * {@code data}..{@code dataFim} (ambos inclusive), cada um repetindo motivo/horario/
+     * veiculos/pessoas - não existe "evento de vários dias" no modelo, então cada dia
+     * liberável pela portaria precisa do seu próprio registro. Sem reforma, é só o
+     * comportamento de sempre (lista com 1 evento).
+     */
     @Transactional
-    public EventoResponse criar(ContextoAutenticado contexto, EventoCreateRequest request) {
+    public List<EventoResponse> criar(ContextoAutenticado contexto, EventoCreateRequest request) {
         exigirMorador(contexto);
 
         if (request.data().isBefore(LocalDate.now())) {
             throw new InvalidRequestException("A data do evento não pode ser no passado");
         }
+        List<LocalDate> datas = resolverDatasReforma(request);
 
         Condominio condominio = condominioRepository
                 .findById(contexto.condominioId())
@@ -112,36 +125,72 @@ public class EventoService {
         Morador morador = moradorRepository
                 .findById(contexto.pessoaId())
                 .orElseThrow(() -> new ResourceNotFoundException("Morador não encontrado: " + contexto.pessoaId()));
+        EspacoComum espacoComum = resolverEspacoComum(request.espacoComumId(), contexto.condominioId());
+        String horario = request.horario() == null || request.horario().isBlank() ? null : request.horario().trim();
+        String unidade = buscarUnidade(morador.getId(), contexto.condominioId());
+        // "Visitante recorrente" (pedido do Romulo): calculado UMA VEZ, antes do laço de
+        // dias da reforma, só a partir do histórico já existente no banco - cada dia novo
+        // herda do histórico antigo, nunca de um dia-irmão criado nesta mesma chamada.
+        Map<String, EventoPessoa> fotosRecentes = mapaFotosRecentes(morador.getId());
 
-        Evento evento = new Evento();
-        evento.setCondominio(condominio);
-        evento.setMorador(morador);
-        evento.setMotivo(request.motivo());
-        evento.setData(request.data());
-        evento.setHorario(request.horario() == null || request.horario().isBlank() ? null : request.horario().trim());
-        evento.setEspacoComum(resolverEspacoComum(request.espacoComumId(), contexto.condominioId()));
+        List<EventoResponse> respostas = new ArrayList<>();
+        for (LocalDate data : datas) {
+            Evento evento = new Evento();
+            evento.setCondominio(condominio);
+            evento.setMorador(morador);
+            evento.setMotivo(request.motivo());
+            evento.setData(data);
+            evento.setHorario(horario);
+            evento.setEspacoComum(espacoComum);
+            evento.setReforma(request.reforma());
 
-        Evento salvo = repository.save(evento);
+            Evento salvo = repository.save(evento);
 
-        List<EventoVeiculo> veiculos = request.veiculos().stream().map(v -> {
-            EventoVeiculo veiculo = new EventoVeiculo();
-            veiculo.setEvento(salvo);
-            veiculo.setPlaca(v.placa().trim().toUpperCase());
-            return veiculo;
-        }).toList();
-        veiculoRepository.saveAll(veiculos);
+            List<EventoVeiculo> veiculos = request.veiculos().stream().map(v -> {
+                EventoVeiculo veiculo = new EventoVeiculo();
+                veiculo.setEvento(salvo);
+                veiculo.setPlaca(v.placa().trim().toUpperCase());
+                return veiculo;
+            }).toList();
+            veiculoRepository.saveAll(veiculos);
 
-        List<EventoPessoa> pessoas = request.pessoas().stream().map(p -> {
-            EventoPessoa pessoa = new EventoPessoa();
-            pessoa.setEvento(salvo);
-            pessoa.setNome(p.nome().trim());
-            pessoa.setDocumento(p.documento().trim());
-            return pessoa;
-        }).toList();
-        pessoaRepository.saveAll(pessoas);
+            List<EventoPessoa> pessoas = request.pessoas().stream().map(p -> {
+                EventoPessoa pessoa = new EventoPessoa();
+                pessoa.setEvento(salvo);
+                pessoa.setNome(p.nome().trim());
+                pessoa.setDocumento(p.documento().trim());
+                return pessoa;
+            }).toList();
+            pessoaRepository.saveAll(pessoas);
+            pessoas.forEach(pessoa -> copiarFotoHistorica(pessoa, fotosRecentes));
 
-        // Morador nunca vê fotoUrl - nem faz sentido aqui, evento recém-criado não tem foto ainda.
-        return EventoResponse.from(salvo, buscarUnidade(morador.getId(), contexto.condominioId()), veiculos, pessoas, false);
+            // Morador nunca vê fotoUrl - nem faz sentido aqui, evento recém-criado não tem foto ainda.
+            respostas.add(EventoResponse.from(salvo, unidade, veiculos, pessoas, false));
+        }
+        return respostas;
+    }
+
+    /** Sem {@code reforma}: só a própria {@code data}. Com {@code reforma}: exige unidade
+     * própria ({@code espacoComumId} nulo), {@code dataFim} informada, não anterior à
+     * {@code data}, e intervalo entre as duas de até 15 dias - devolve cada dia do
+     * intervalo, início e fim inclusive. */
+    private List<LocalDate> resolverDatasReforma(EventoCreateRequest request) {
+        if (!request.reforma()) {
+            return List.of(request.data());
+        }
+        if (request.espacoComumId() != null) {
+            throw new InvalidRequestException("Reforma só pode ser cadastrada na própria unidade");
+        }
+        if (request.dataFim() == null) {
+            throw new InvalidRequestException("Informe a data de fim da reforma");
+        }
+        if (request.dataFim().isBefore(request.data())) {
+            throw new InvalidRequestException("A data de fim não pode ser anterior à data de início");
+        }
+        if (ChronoUnit.DAYS.between(request.data(), request.dataFim()) > 15) {
+            throw new InvalidRequestException("O intervalo entre início e fim da reforma não pode passar de 15 dias");
+        }
+        return request.data().datesUntil(request.dataFim().plusDays(1)).toList();
     }
 
     /**
@@ -176,6 +225,9 @@ public class EventoService {
             if (request.data().isBefore(LocalDate.now())) {
                 throw new InvalidRequestException("A data do evento não pode ser no passado");
             }
+            if (evento.isReforma() && request.espacoComumId() != null) {
+                throw new InvalidRequestException("Evento de reforma é sempre na própria unidade");
+            }
             evento.setData(request.data());
             evento.setEspacoComum(resolverEspacoComum(request.espacoComumId(), contexto.condominioId()));
         }
@@ -207,6 +259,10 @@ public class EventoService {
         for (EventoPessoa p : existentes) {
             existentesPorId.put(p.getId(), p);
         }
+        // "Visitante recorrente" (pedido do Romulo) - só pra pessoa NOVA (sem id), mesmo
+        // critério de {@link #criar}; editar uma pessoa já existente pra bater com outro
+        // nome/documento do histórico não dispara isso, fora do escopo do pedido original.
+        Map<String, EventoPessoa> fotosRecentes = mapaFotosRecentes(evento.getMorador().getId());
 
         Set<Integer> mantidos = new HashSet<>();
         for (EventoPessoaAtualizarRequest item : itens) {
@@ -227,6 +283,7 @@ public class EventoService {
                 nova.setNome(item.nome().trim());
                 nova.setDocumento(item.documento().trim());
                 pessoaRepository.save(nova);
+                copiarFotoHistorica(nova, fotosRecentes);
             }
         }
         for (EventoPessoa existente : existentes) {
@@ -460,6 +517,54 @@ public class EventoService {
         return pessoa;
     }
 
+    /** "Visitante recorrente" (pedido do Romulo: "pra que o porteiro não precise tirar a
+     * foto de novo, só conferir") - nome+documento mais recentes do morador QUE JÁ TÊM
+     * foto, deduplicados (mesmo critério de {@link #listarCandidatosPessoas}, mas aqui
+     * guardando a {@link EventoPessoa} inteira, não um DTO, porque precisamos da
+     * {@code fotoChave} de origem pra copiar). */
+    private Map<String, EventoPessoa> mapaFotosRecentes(Integer moradorId) {
+        Map<String, EventoPessoa> mapa = new HashMap<>();
+        for (EventoPessoa pessoa : pessoaRepository.findTop100ByEvento_Morador_IdOrderByIdDesc(moradorId)) {
+            if (pessoa.getFotoChave() == null) {
+                continue;
+            }
+            String chave = pessoa.getNome().toLowerCase() + "|" + pessoa.getDocumento().toLowerCase();
+            mapa.putIfAbsent(chave, pessoa);
+        }
+        return mapa;
+    }
+
+    /** Copia (server-side, sem passar bytes pelo nosso backend) a foto de um evento
+     * anterior do morador pra dentro de {@code novaPessoa}, se o nome+documento baterem
+     * com alguma entrada de {@code fotosRecentes} - silencioso quando não bate (a maioria
+     * dos casos: pessoa realmente nova, sem histórico). Preserva {@code fotoEm} da
+     * ORIGEM (não "agora") - fica claro, se precisar auditar depois, que é uma foto
+     * reaproveitada, não tirada nesse momento. {@code funcionarioFoto} fica nulo: nenhum
+     * funcionário agiu nesta pessoa especificamente - ver {@code EventoPessoaResponse}. */
+    private void copiarFotoHistorica(EventoPessoa novaPessoa, Map<String, EventoPessoa> fotosRecentes) {
+        String chave = novaPessoa.getNome().toLowerCase() + "|" + novaPessoa.getDocumento().toLowerCase();
+        EventoPessoa origem = fotosRecentes.get(chave);
+        if (origem == null) {
+            return;
+        }
+        String chaveNova = "eventos/%d/pessoas/%d/%s%s".formatted(
+                novaPessoa.getEvento().getId(), novaPessoa.getId(), UUID.randomUUID(), extensaoPara(origem.getFotoTipoMime()));
+        try {
+            minioClient.copyObject(CopyObjectArgs.builder()
+                    .bucket(bucket)
+                    .object(chaveNova)
+                    .source(CopySource.builder().bucket(bucket).object(origem.getFotoChave()).build())
+                    .build());
+        } catch (Exception ex) {
+            throw new RuntimeException("Falha ao reaproveitar a foto anterior", ex);
+        }
+        novaPessoa.setFotoChave(chaveNova);
+        novaPessoa.setFotoTipoMime(origem.getFotoTipoMime());
+        novaPessoa.setFotoTamanhoBytes(origem.getFotoTamanhoBytes());
+        novaPessoa.setFotoEm(origem.getFotoEm());
+        pessoaRepository.save(novaPessoa);
+    }
+
     private void removerObjetoStorage(String chave) {
         try {
             minioClient.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(chave).build());
@@ -598,6 +703,43 @@ public class EventoService {
         if (!TipoPessoa.morador.name().equals(contexto.tipoPapel())) {
             throw new ForbiddenException("Só morador pode fazer isso");
         }
+    }
+
+    /** Autocomplete de "visitante recorrente" (pedido do Romulo) - pessoas que o PRÓPRIO
+     * morador logado já cadastrou em qualquer evento anterior dele (nunca de outro
+     * morador), mais recente primeiro, deduplicadas por nome+documento. Não recebe
+     * eventoId: a busca nasce do morador logado, não de um evento específico - filtrar o
+     * que já está na tela do formulário atual é responsabilidade do frontend. */
+    public List<EventoPessoaCandidatoResponse> listarCandidatosPessoas(ContextoAutenticado contexto) {
+        exigirMorador(contexto);
+        Set<String> vistos = new HashSet<>();
+        List<EventoPessoaCandidatoResponse> candidatos = new ArrayList<>();
+        for (EventoPessoa pessoa : pessoaRepository.findTop100ByEvento_Morador_IdOrderByIdDesc(contexto.pessoaId())) {
+            String chave = pessoa.getNome().toLowerCase() + "|" + pessoa.getDocumento().toLowerCase();
+            if (vistos.add(chave)) {
+                candidatos.add(new EventoPessoaCandidatoResponse(pessoa.getNome(), pessoa.getDocumento()));
+                if (candidatos.size() >= 20) {
+                    break;
+                }
+            }
+        }
+        return candidatos;
+    }
+
+    /** Mesmo espírito de {@link #listarCandidatosPessoas}, pra veículo (dedupe por placa). */
+    public List<EventoVeiculoCandidatoResponse> listarCandidatosVeiculos(ContextoAutenticado contexto) {
+        exigirMorador(contexto);
+        Set<String> vistos = new HashSet<>();
+        List<EventoVeiculoCandidatoResponse> candidatos = new ArrayList<>();
+        for (EventoVeiculo veiculo : veiculoRepository.findTop100ByEvento_Morador_IdOrderByIdDesc(contexto.pessoaId())) {
+            if (vistos.add(veiculo.getPlaca().toUpperCase())) {
+                candidatos.add(new EventoVeiculoCandidatoResponse(veiculo.getPlaca()));
+                if (candidatos.size() >= 20) {
+                    break;
+                }
+            }
+        }
+        return candidatos;
     }
 
     private Evento buscarEvento(Integer id) {

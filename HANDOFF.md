@@ -6,6 +6,63 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v197)
+
+- **Autocomplete de "visitante recorrente" + foto reaproveitada (v197, pedido do Romulo)** -
+  "visitante recorrente" não precisa ser digitado nem fotografado de novo.
+  - **Autocomplete**: `GET /api/eventos/candidatos-pessoas` (nome+documento) e `GET
+    /api/eventos/candidatos-veiculos` (placa) - histórico do PRÓPRIO morador logado, nunca
+    de outro, deduplicado, mais recente primeiro (`EventoPessoaRepository`/
+    `EventoVeiculoRepository.findTop100ByEvento_Morador_IdOrderByIdDesc` + dedupe em
+    memória, top 20). Sem endpoint de busca por texto - o frontend carrega a lista inteira
+    uma vez (igual `listarEspacosComuns`) e filtra em memória por substring enquanto o
+    morador digita, mesmo espírito de `ComboDestinatarioMensagemPrivada`.
+  - **Frontend** (`/eventos`): dropdown de sugestões sob o campo "Nome" (pessoa, seleciona
+    nome+documento juntos) e sob "Placa" (veículo) - componente genérico `ListaSugestoes<T>`
+    sem input próprio, só a lista; o campo real (controlado) já existia, só ganhou `onFocus`/
+    `onBlur`/dropdown. **Cuidado de layout**: ao envolver só o input de "Nome" numa `<div
+    className="relative flex-1">` pra posicionar o dropdown, o input de "Documento" ao lado
+    (sem `flex-1` próprio) quase desapareceu (32px) - `width:100%` do componente `Input` vira
+    o flex-basis dele, que "ganha" quase toda a sobra do flex contra o `flex-1` (basis 0) do
+    vizinho. Corrigido passando `className="flex-1"` pro Input de Documento também - os dois
+    lados de um par precisam do mesmo tratamento de flex, não só o que tem o dropdown.
+  - **Foto reaproveitada**: ao criar uma pessoa NOVA (tela de novo evento, de edição, ou
+    cada dia de uma reforma) cujo nome+documento batem com alguma pessoa anterior do MESMO
+    morador que já tinha foto, o backend copia o objeto no bucket (MinIO `copyObject`,
+    server-side, sem passar bytes pelo nosso backend) pra uma chave nova e preenche
+    `fotoChave`/`fotoTipoMime`/`fotoTamanhoBytes`/`fotoEm` da pessoa nova - o porteiro já
+    abre o modal de foto na Portaria vendo a foto de antes, só confere e libera (ou troca,
+    se a pessoa estiver diferente). **`fotoEm` preserva o horário da captura ORIGINAL**
+    (decisão consciente, não "agora") - fica claro, numa auditoria futura, que é uma foto
+    reaproveitada, não tirada nesse momento. `funcionarioFoto` fica nulo (nenhum funcionário
+    agiu nesta pessoa especificamente). Só se aplica a pessoa NOVA (sem `id` no request) -
+    editar uma pessoa já existente pra bater com outro nome/documento do histórico não
+    dispara a cópia, fora do escopo do pedido original. Helpers novos em `EventoService`:
+    `mapaFotosRecentes`/`copiarFotoHistorica`, chamados por `criar` (uma vez por morador,
+    antes do laço de dias da reforma - cada dia herda do histórico antigo já salvo no banco,
+    nunca de um dia-irmão criado na mesma chamada) e por `sincronizarPessoas` (usado por
+    `atualizar`).
+  - **Testado ao vivo**: autocomplete retornando certo; pessoa criada direto, via edição
+    (sincronizarPessoas) e nos 3 dias de uma reforma - foto copiada e IDÊNTICA byte a byte
+    ao original nos três casos, cada evento com seu próprio objeto no bucket (sem
+    compartilhar chave); testado no browser (dropdown de pessoa e de veículo abrindo e
+    preenchendo certo, layout corrigido). Dados de teste e objetos do bucket limpos.
+
+## Estado atual (v196)
+
+- **Reforma na própria unidade (V38, pedido do Romulo)** - feito numa sessão anterior
+  (continuada pelo tablet), documentado aqui agora por completude (regra do projeto: schema
+  sempre sincronizado com o diagrama/handoff, sem exceção). Morador marca a opção "É uma
+  reforma" ao cadastrar um evento na PRÓPRIA unidade (nunca num `EspacoComum` - validado no
+  service) e informa início/fim (até 15 dias de intervalo); o backend gera um `Evento` POR
+  DIA do intervalo (não existe "evento de vários dias" no modelo - cada dia é liberável
+  separadamente pela portaria), cada um repetindo motivo/horário/veículos/pessoas e com a
+  nova coluna `eventos.reforma = true`. `POST /api/eventos` passou a devolver uma LISTA de
+  `EventoResponse` (1 item sem reforma, N itens com reforma) - `criarEvento` no frontend
+  mudou de assinatura. Editar (`PATCH`) continua sendo 1 evento por vez (cada dia da reforma
+  edita/libera independente) - não pode trocar pra um `EspacoComum` nem pra fora da própria
+  unidade depois de criado como reforma.
+
 ## Estado atual (v195)
 
 - **Termo de responsabilidade no primeiro login (v195, pedido do Romulo)** - "pra que as

@@ -10,4 +10,10 @@ public interface EventoPessoaRepository extends JpaRepository<EventoPessoa, Inte
     /** Carga em lote pra listagem paginada da portaria - evita N+1 (uma query pra todos os
      * eventos da página, não uma por evento). */
     List<EventoPessoa> findByEventoIdInOrderById(List<Integer> eventoIds);
+
+    /** Alimenta o autocomplete de "visitante recorrente" (pedido do Romulo) - mais recente
+     * primeiro, só do morador logado (nunca de outro). Top 100 e dedupe em memória (ver
+     * {@code EventoService#listarCandidatosPessoas}) - volume por morador não justifica
+     * uma query com DISTINCT. */
+    List<EventoPessoa> findTop100ByEvento_Morador_IdOrderByIdDesc(Integer moradorId);
 }

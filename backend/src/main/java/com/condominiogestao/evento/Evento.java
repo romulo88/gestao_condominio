@@ -63,6 +63,14 @@ public class Evento {
     @Column(length = 50)
     private String horario;
 
+    /** Reforma na própria unidade (pedido do Romulo) - sempre false quando {@code
+     * espacoComum} não é nulo (validado em {@code EventoService}). Quando o morador marca
+     * essa opção na criação, o service gera um evento por dia do intervalo informado (até
+     * 15 dias) com essa flag true em cada um - não existe "evento de vários dias" aqui,
+     * cada dia é um {@code Evento} independente, liberável separadamente pela portaria. */
+    @Column(name = "reforma", nullable = false)
+    private boolean reforma;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

@@ -3,8 +3,10 @@ package com.condominiogestao.evento;
 import com.condominiogestao.common.ErrorResponse;
 import com.condominiogestao.common.PaginaResponse;
 import com.condominiogestao.evento.dto.EventoCreateRequest;
+import com.condominiogestao.evento.dto.EventoPessoaCandidatoResponse;
 import com.condominiogestao.evento.dto.EventoResponse;
 import com.condominiogestao.evento.dto.EventoUpdateRequest;
+import com.condominiogestao.evento.dto.EventoVeiculoCandidatoResponse;
 import com.condominiogestao.security.ContextoAutenticado;
 import com.condominiogestao.storage.ArquivoStorageService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -49,12 +51,16 @@ public class EventoController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Morador cadastra um evento (festa/visita) com veículos e pessoas esperados",
-            description = "Só morador. `espacoComumId` omitido = local é a própria unidade do morador.")
-    @ApiResponse(responseCode = "400", description = "Data no passado, ou nenhuma pessoa informada",
+            description = "Só morador. `espacoComumId` omitido = local é a própria unidade do morador. Com "
+                    + "`reforma=true` (só permitido com `espacoComumId` omitido), `data`/`dataFim` formam um "
+                    + "intervalo de até 15 dias e a resposta traz um evento por dia desse intervalo, cada um "
+                    + "repetindo motivo/horário/veículos/pessoas - sem reforma, a resposta tem sempre 1 item.")
+    @ApiResponse(responseCode = "400", description = "Data no passado, nenhuma pessoa informada, ou dados de "
+            + "reforma inválidos (sem espaço próprio, sem dataFim, fim antes do início, ou intervalo acima de 15 dias)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "403", description = "Só morador pode fazer isso",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    public EventoResponse criar(
+    public List<EventoResponse> criar(
             @AuthenticationPrincipal ContextoAutenticado contexto, @Valid @RequestBody EventoCreateRequest request) {
         return service.criar(contexto, request);
     }
@@ -67,8 +73,9 @@ public class EventoController {
                     + "sempre preservado intacto, mesmo que não venha na lista ou venha com dados diferentes. Local "
                     + "(`espacoComumId`) e `data` só podem mudar se a data ATUAL (antes desta edição) ainda não é "
                     + "hoje - no dia do evento, os dois precisam vir iguais ao que já está salvo.")
-    @ApiResponse(responseCode = "400", description = "Data no passado, nenhuma pessoa (no total), ou tentativa de "
-            + "mudar data/local no dia do evento",
+    @ApiResponse(responseCode = "400", description = "Data no passado, nenhuma pessoa (no total), tentativa de "
+            + "mudar data/local no dia do evento, ou tentativa de mudar o local de um evento de reforma pra um "
+            + "espaço comum (reforma é sempre na própria unidade)",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "403", description = "Só o próprio morador que cadastrou pode fazer isso",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
@@ -102,6 +109,25 @@ public class EventoController {
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     public List<EventoResponse> listarMeusEventos(@AuthenticationPrincipal ContextoAutenticado contexto) {
         return service.listarMeusEventos(contexto);
+    }
+
+    @GetMapping("/candidatos-pessoas")
+    @Operation(summary = "Autocomplete de \"visitante recorrente\" - pessoas já cadastradas pelo morador logado",
+            description = "Nome+documento usados em qualquer evento ANTERIOR do próprio morador (nunca de outro), "
+                    + "mais recente primeiro, deduplicados. Só morador.")
+    @ApiResponse(responseCode = "403", description = "Só morador pode fazer isso",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public List<EventoPessoaCandidatoResponse> listarCandidatosPessoas(@AuthenticationPrincipal ContextoAutenticado contexto) {
+        return service.listarCandidatosPessoas(contexto);
+    }
+
+    @GetMapping("/candidatos-veiculos")
+    @Operation(summary = "Autocomplete de \"visitante recorrente\" - veículos já cadastrados pelo morador logado",
+            description = "Mesmo espírito de /candidatos-pessoas, deduplicado por placa.")
+    @ApiResponse(responseCode = "403", description = "Só morador pode fazer isso",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public List<EventoVeiculoCandidatoResponse> listarCandidatosVeiculos(@AuthenticationPrincipal ContextoAutenticado contexto) {
+        return service.listarCandidatosVeiculos(contexto);
     }
 
     @GetMapping("/pagina")
