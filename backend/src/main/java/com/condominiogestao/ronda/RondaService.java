@@ -160,7 +160,11 @@ public class RondaService {
             ronda.setObservacao(observacao.isEmpty() ? null : observacao);
         }
 
-        fecharRonda(ronda, ehDono ? RondaStatus.finalizada : RondaStatus.encerrada_manualmente, LocalDateTime.now());
+        fecharRonda(
+                ronda,
+                ehDono ? RondaStatus.finalizada : RondaStatus.encerrada_manualmente,
+                LocalDateTime.now(),
+                pontoRepository.findByRondaIdOrderByCapturadoEmAsc(ronda.getId()));
         Ronda salva = repository.save(ronda);
         return RondaResponse.from(
                 salva, demandaRepository.countByRondaIdIn(List.of(salva.getId())), podeVerNomeFuncionario(contexto),
@@ -201,6 +205,13 @@ public class RondaService {
                 ronda, totalDemandasPorRonda.getOrDefault(ronda.getId(), 0L), podeVerNome, podeVerObs)));
     }
 
+    /** Teto de segurança pro {@code findAll} sem paginação abaixo - perfil completo pode
+     * filtrar "resumo" sem período (padrão do filtro pra esse papel, ver tela Rondas), e sem
+     * teto isso carregaria toda a tabela `rondas` do condomínio na memória. Um condomínio
+     * passando disso num resumo sem filtro de período vê o total subcontado - aceitável pra
+     * esse card de KPI, que não é a fonte de verdade (a lista paginada mostra tudo). */
+    private static final int LIMITE_RONDAS_RESUMO = 5000;
+
     public RondaResumoResponse resumo(
             ContextoAutenticado contexto,
             Integer funcionarioId,
@@ -211,14 +222,17 @@ public class RondaService {
             String observacao) {
         exigirPodeVerHistorico(contexto);
 
-        List<Ronda> rondas = repository.findAll(especificacao(
-                contexto.condominioId(),
-                funcionarioIdEfetivo(contexto, funcionarioId),
-                inicio,
-                fim,
-                tipo,
-                rondaId,
-                observacaoEfetiva(contexto, observacao)));
+        List<Ronda> rondas = repository.findAll(
+                        especificacao(
+                                contexto.condominioId(),
+                                funcionarioIdEfetivo(contexto, funcionarioId),
+                                inicio,
+                                fim,
+                                tipo,
+                                rondaId,
+                                observacaoEfetiva(contexto, observacao)),
+                        PageRequest.of(0, LIMITE_RONDAS_RESUMO, Sort.by(Sort.Direction.DESC, "iniciadaEm")))
+                .getContent();
         rondas.forEach(this::fecharSeAbandonada);
 
         LocalDateTime agora = LocalDateTime.now();
@@ -300,14 +314,14 @@ public class RondaService {
         }
         List<RondaPonto> pontos = pontoRepository.findByRondaIdOrderByCapturadoEmAsc(ronda.getId());
         LocalDateTime fim = pontos.isEmpty() ? ronda.getIniciadaEm() : pontos.get(pontos.size() - 1).getCapturadoEm();
-        fecharRonda(ronda, RondaStatus.encerrada_automaticamente, fim);
+        fecharRonda(ronda, RondaStatus.encerrada_automaticamente, fim, pontos);
         repository.save(ronda);
     }
 
-    private void fecharRonda(Ronda ronda, RondaStatus status, LocalDateTime finalizadaEm) {
+    private void fecharRonda(Ronda ronda, RondaStatus status, LocalDateTime finalizadaEm, List<RondaPonto> pontos) {
         ronda.setFinalizadaEm(finalizadaEm);
         ronda.setStatus(status);
-        ronda.setDistanciaMetros(calcularDistanciaMetros(pontoRepository.findByRondaIdOrderByCapturadoEmAsc(ronda.getId())));
+        ronda.setDistanciaMetros(calcularDistanciaMetros(pontos));
     }
 
     private double calcularDistanciaMetros(List<RondaPonto> pontosOrdenados) {

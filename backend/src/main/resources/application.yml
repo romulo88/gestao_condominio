@@ -16,6 +16,11 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        # Lote pra buscar associações @ManyToOne/@OneToOne LAZY (ex.: Ronda.funcionario,
+        # Funcionario.pessoa) - sem isso, cada ronda/funcionário acessado numa listagem
+        # dispara uma query própria pro lazy (N+1). Com o batch, o Hibernate agrupa até 50
+        # ids pendentes num único IN (...), não muda nenhum código de service/DTO.
+        default_batch_fetch_size: 50
 
   flyway:
     enabled: true

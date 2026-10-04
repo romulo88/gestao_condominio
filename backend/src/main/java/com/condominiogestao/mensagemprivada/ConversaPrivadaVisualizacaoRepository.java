@@ -5,5 +5,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ConversaPrivadaVisualizacaoRepository extends JpaRepository<ConversaPrivadaVisualizacao, Integer> {
 
-    List<ConversaPrivadaVisualizacao> findByConversaIdOrderByVisualizadoEmDesc(Integer conversaId);
+    /** Tela de investigação (auditoria), não precisa do histórico completo de uma vez -
+     * `conversas_privadas_visualizacoes` é append-only (1 linha por abertura/envio, ver
+     * ConversaPrivadaService.registrarVisualizacao), cresce sem teto numa conversa de longa
+     * duração. As 200 mais recentes bastam pra quem tá investigando. */
+    List<ConversaPrivadaVisualizacao> findTop200ByConversaIdOrderByVisualizadoEmDesc(Integer conversaId);
 }

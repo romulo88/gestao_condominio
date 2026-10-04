@@ -318,7 +318,7 @@ public class ConversaPrivadaService {
     public List<ConversaPrivadaVisualizacaoResponse> listarVisualizacoes(ContextoAutenticado contexto, Integer id) {
         ConversaPrivada conversa = buscarConversa(id);
         Autorizacao.exigirPerfilCompletoDoCondominio(contexto, conversa.getCondominio().getId());
-        return visualizacaoRepository.findByConversaIdOrderByVisualizadoEmDesc(id).stream()
+        return visualizacaoRepository.findTop200ByConversaIdOrderByVisualizadoEmDesc(id).stream()
                 .map(ConversaPrivadaVisualizacaoResponse::from)
                 .toList();
     }

@@ -344,18 +344,34 @@ public class EventoService {
         repository.delete(evento);
     }
 
-    /** "Meus eventos" do morador - mais recente primeiro, sem paginação (baixo volume por morador). */
+    /** "Meus eventos" do morador - mais recente primeiro, sem paginação (baixo volume por morador).
+     * Veículos/pessoas de todos os eventos em 2 queries em lote, não uma por evento - mesmo
+     * espírito de {@link #montarRespostasEmLote}. */
     public List<EventoResponse> listarMeusEventos(ContextoAutenticado contexto) {
         exigirMorador(contexto);
         List<Evento> eventos = repository.findByMoradorIdOrderByDataDesc(contexto.pessoaId());
+        if (eventos.isEmpty()) {
+            return List.of();
+        }
         String unidade = buscarUnidade(contexto.pessoaId(), contexto.condominioId());
+
+        List<Integer> ids = eventos.stream().map(Evento::getId).toList();
+        Map<Integer, List<EventoVeiculo>> veiculosPorEvento = new HashMap<>();
+        for (EventoVeiculo v : veiculoRepository.findByEventoIdInOrderById(ids)) {
+            veiculosPorEvento.computeIfAbsent(v.getEvento().getId(), k -> new ArrayList<>()).add(v);
+        }
+        Map<Integer, List<EventoPessoa>> pessoasPorEvento = new HashMap<>();
+        for (EventoPessoa p : pessoaRepository.findByEventoIdInOrderById(ids)) {
+            pessoasPorEvento.computeIfAbsent(p.getEvento().getId(), k -> new ArrayList<>()).add(p);
+        }
+
         // Morador nunca vê fotoUrl, mesmo nos próprios eventos.
         return eventos.stream()
                 .map(evento -> EventoResponse.from(
                         evento,
                         unidade,
-                        veiculoRepository.findByEventoIdOrderById(evento.getId()),
-                        pessoaRepository.findByEventoIdOrderById(evento.getId()),
+                        veiculosPorEvento.getOrDefault(evento.getId(), List.of()),
+                        pessoasPorEvento.getOrDefault(evento.getId(), List.of()),
                         false))
                 .toList();
     }
