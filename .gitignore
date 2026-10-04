@@ -18,3 +18,6 @@ backend/target/
 # Descartes locais
 _to_delete/
 _*.tgz
+
+# Entregas geradas fora do codigo (contratos, copias de agentes) - nao versionar
+Claude outputs/
