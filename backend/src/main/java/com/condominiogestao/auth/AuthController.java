@@ -112,6 +112,16 @@ public class AuthController {
         return service.trocarContexto(contexto, request);
     }
 
+    @PostMapping("/renovar")
+    @Operation(summary = "Renova o token da sessão atual, no mesmo contexto (condomínio + papel)",
+            description = "Requer token completo ainda válido. O token dura 15 minutos de inatividade; o frontend "
+                    + "chama isso enquanto a pessoa está usando a tela. Confere o vínculo de novo a cada chamada.")
+    @ApiResponse(responseCode = "401", description = "O vínculo não existe mais (ou não está mais ativo)",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public TokenResponse renovar(@AuthenticationPrincipal ContextoAutenticado contexto) {
+        return service.renovar(contexto);
+    }
+
     private String extrairToken(String authorizationHeader) {
         if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
             return authorizationHeader.substring(7);

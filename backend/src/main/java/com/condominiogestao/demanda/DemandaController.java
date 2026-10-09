@@ -2,6 +2,7 @@ package com.condominiogestao.demanda;
 
 import com.condominiogestao.common.ErrorResponse;
 import com.condominiogestao.demanda.dto.DemandaAprovarRequest;
+import com.condominiogestao.demanda.dto.DemandaAtualizarRequest;
 import com.condominiogestao.demanda.dto.DemandaCreateRequest;
 import com.condominiogestao.demanda.dto.DemandaMoverKanbanRequest;
 import com.condominiogestao.demanda.dto.DemandaMudancaStatusResponse;
@@ -86,6 +87,34 @@ public class DemandaController {
     public DemandaResponse criar(
             @AuthenticationPrincipal ContextoAutenticado contexto, @Valid @RequestBody DemandaCreateRequest request) {
         return service.criar(contexto, request);
+    }
+
+    @PatchMapping("/{id}")
+    @Operation(summary = "Quem abriu a demanda edita título e descrição enquanto ela está pendente",
+            description = "Só o solicitante (morador ou funcionário), e só enquanto `statusAprovacao` é pendente - "
+                    + "depois de aprovada ou recusada o texto não muda mais. Nada além de título e descrição.")
+    @ApiResponse(responseCode = "403", description = "Só quem abriu a demanda pode editar",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "409", description = "A demanda já foi aprovada ou recusada",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public DemandaResponse atualizar(
+            @AuthenticationPrincipal ContextoAutenticado contexto,
+            @PathVariable Integer id,
+            @Valid @RequestBody DemandaAtualizarRequest request) {
+        return service.atualizar(contexto, id, request);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Quem abriu a demanda a exclui enquanto ela está pendente",
+            description = "Exclusão física, mesma autorização do PATCH. Leva junto anexos (inclusive o arquivo no "
+                    + "storage), notas, etapas, etiquetas, responsáveis, acessos de sigilo e quem acompanha.")
+    @ApiResponse(responseCode = "403", description = "Só quem abriu a demanda pode excluir",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    @ApiResponse(responseCode = "409", description = "A demanda já foi aprovada ou recusada",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    public void excluir(@AuthenticationPrincipal ContextoAutenticado contexto, @PathVariable Integer id) {
+        service.excluir(contexto, id);
     }
 
     @PatchMapping("/{id}/aprovar")

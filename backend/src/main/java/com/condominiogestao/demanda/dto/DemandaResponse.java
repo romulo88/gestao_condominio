@@ -116,7 +116,25 @@ public record DemandaResponse(
          * endpoints que não calculam isso em lote (ver overload sem esse parâmetro). */
         LocalDateTime statusKanbanDesde,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt) {
+        LocalDateTime updatedAt,
+        /** Pedido do Romulo: true só pra quem ABRIU a demanda enquanto ela ainda está pendente
+         * de aprovação - controla a lixeira e o lápis (editar título/descrição) na tela.
+         * Calculado no servidor por quem está vendo (ver {@code DemandaService#comEdicao}),
+         * nunca inferido no cliente: com {@code identificarSolicitante} falso o nome do
+         * solicitante nem vem na resposta, então a tela não teria como saber. As fábricas
+         * {@code from} nascem com false - quem tem o viewer em mãos aplica {@link
+         * #comPodeEditarOuExcluir}. */
+        boolean podeEditarOuExcluir) {
+
+    public DemandaResponse comPodeEditarOuExcluir(boolean valor) {
+        return new DemandaResponse(
+                id, condominioId, titulo, descricao, solicitanteTipo, solicitanteNome, identificarSolicitante,
+                statusAprovacao, statusKanbanId, statusKanbanNome, ordem, funcionarioResponsavelNome,
+                funcionarioAprovadorNome, dataAprovacao, justificativaReprovacao, justificativaAprovacao,
+                sigilosa, arquivada, podeGerenciarSigilo, etiquetas, temAnexos, temNotaPendente,
+                temEtapaVencida, temEtapaVigente, responsaveis, podeAcompanhar, acompanhando, rondaId,
+                solicitantePerfil, solicitanteFuncao, statusKanbanDesde, createdAt, updatedAt, valor);
+    }
 
     /** Demanda recém-criada não tem etiqueta/anexo/nota/responsável nenhum ainda - evita
      * consulta à toa. Também não pode estar sendo acompanhada ainda (acabou de nascer). */
@@ -209,6 +227,7 @@ public record DemandaResponse(
                 solicitanteFuncao,
                 statusKanbanDesde,
                 demanda.getCreatedAt(),
-                demanda.getUpdatedAt());
+                demanda.getUpdatedAt(),
+                false);
     }
 }

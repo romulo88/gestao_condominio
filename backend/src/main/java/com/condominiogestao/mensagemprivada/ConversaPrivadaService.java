@@ -25,6 +25,8 @@ import com.condominiogestao.morador.Morador;
 import com.condominiogestao.morador.MoradorCondominio;
 import com.condominiogestao.morador.MoradorCondominioRepository;
 import com.condominiogestao.morador.MoradorRepository;
+import com.condominiogestao.pessoa.Pessoa;
+import com.condominiogestao.pessoa.PessoaRepository;
 import com.condominiogestao.security.ContextoAutenticado;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -34,6 +36,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,6 +66,8 @@ public class ConversaPrivadaService {
     private final MoradorCondominioRepository moradorCondominioRepository;
     private final FuncionarioRepository funcionarioRepository;
     private final FuncionarioCondominioRepository funcionarioCondominioRepository;
+    private final PessoaRepository pessoaRepository;
+    private final PasswordEncoder passwordEncoder;
 
     public ConversaPrivadaService(
             ConversaPrivadaRepository repository,
@@ -74,7 +79,9 @@ public class ConversaPrivadaService {
             MoradorRepository moradorRepository,
             MoradorCondominioRepository moradorCondominioRepository,
             FuncionarioRepository funcionarioRepository,
-            FuncionarioCondominioRepository funcionarioCondominioRepository) {
+            FuncionarioCondominioRepository funcionarioCondominioRepository,
+            PessoaRepository pessoaRepository,
+            PasswordEncoder passwordEncoder) {
         this.repository = repository;
         this.destinatarioRepository = destinatarioRepository;
         this.visualizacaoRepository = visualizacaoRepository;
@@ -85,6 +92,8 @@ public class ConversaPrivadaService {
         this.moradorCondominioRepository = moradorCondominioRepository;
         this.funcionarioRepository = funcionarioRepository;
         this.funcionarioCondominioRepository = funcionarioCondominioRepository;
+        this.pessoaRepository = pessoaRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     /** Funcionários COM LOGIN (perfil preenchido) e ativos do condomínio de quem está
@@ -152,6 +161,26 @@ public class ConversaPrivadaService {
             mapa.put(vinculo.getMorador().getId(), vinculo);
         }
         return mapa;
+    }
+
+    /**
+     * Abre uma conversa (chat completo) exigindo a SENHA do próprio usuário logado, a cada
+     * abertura (pedido do Romulo: computador compartilhado - quem cair numa sessão esquecida
+     * aberta, por exemplo a do síndico, não lê as conversas sem saber a senha). É a única
+     * porta de leitura de uma conversa existente: não há mais {@code GET /{id}}, então a
+     * exigência não dá pra contornar chamando a API direto. Senha errada é 400 (não 401/403)
+     * de propósito: o frontend trata 401/403 sem corpo como "sessão expirada" e derrubaria
+     * a pessoa por um simples erro de digitação.
+     */
+    @Transactional
+    public ConversaPrivadaDetalheResponse abrir(ContextoAutenticado contexto, Integer id, String senha) {
+        Pessoa pessoa = pessoaRepository
+                .findById(contexto.pessoaId())
+                .orElseThrow(() -> new ForbiddenException("Pessoa não encontrada"));
+        if (pessoa.getSenhaHash() == null || !passwordEncoder.matches(senha, pessoa.getSenhaHash())) {
+            throw new InvalidRequestException("Senha incorreta");
+        }
+        return buscarDetalhe(contexto, id);
     }
 
     /** Detalhe (chat completo) - marca a conversa como vista por quem está abrindo, na

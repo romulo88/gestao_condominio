@@ -80,7 +80,10 @@ springdoc:
 # valor gerado de verdade (32+ bytes aleatórios) via variável de ambiente/secret manager.
 jwt:
   secret: ${JWT_SECRET:dev-only-secret-troque-isso-em-producao-1234567890abcdefghij}
-  expiracao-completo-ms: 43200000 # 12h - sessão de trabalho num condomínio
+  # 15min de INATIVIDADE (pedido do Romulo: computador compartilhado no escritório/portaria).
+  # Não é a duração total da sessão: enquanto a pessoa usa a tela, o frontend renova o token
+  # (POST /api/auth/renovar) - ver `lib/use-renovacao-sessao.ts`. Sem atividade, vence.
+  expiracao-completo-ms: 900000 # 15min
   expiracao-pre-auth-ms: 300000   # 5min - só pra dar tempo de escolher o contexto
 
 # Senha de todo Administrador novo (Funcionario/Morador ganham um código temporário por

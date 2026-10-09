@@ -9,6 +9,7 @@ import com.condominiogestao.common.TipoPessoa;
 import com.condominiogestao.condominio.Condominio;
 import com.condominiogestao.condominio.CondominioRepository;
 import com.condominiogestao.demanda.dto.DemandaAprovarRequest;
+import com.condominiogestao.demanda.dto.DemandaAtualizarRequest;
 import com.condominiogestao.demanda.dto.DemandaCreateRequest;
 import com.condominiogestao.demanda.dto.DemandaMoverKanbanRequest;
 import com.condominiogestao.demanda.dto.DemandaMudancaStatusResponse;
@@ -33,6 +34,8 @@ import com.condominiogestao.ronda.Ronda;
 import com.condominiogestao.ronda.RondaRepository;
 import com.condominiogestao.ronda.RondaStatus;
 import com.condominiogestao.security.ContextoAutenticado;
+import io.minio.MinioClient;
+import io.minio.RemoveObjectArgs;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -44,6 +47,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -84,6 +88,8 @@ public class DemandaService {
     private final PessoaFotoService pessoaFotoService;
     private final EmailService emailService;
     private final RondaRepository rondaRepository;
+    private final MinioClient minioClient;
+    private final String bucket;
 
     public DemandaService(
             DemandaRepository repository,
@@ -102,7 +108,9 @@ public class DemandaService {
             DemandaEtapaRepository etapaRepository,
             PessoaFotoService pessoaFotoService,
             EmailService emailService,
-            RondaRepository rondaRepository) {
+            RondaRepository rondaRepository,
+            MinioClient minioClient,
+            @Value("${storage.bucket}") String bucket) {
         this.repository = repository;
         this.condominioRepository = condominioRepository;
         this.funcionarioRepository = funcionarioRepository;
@@ -120,6 +128,8 @@ public class DemandaService {
         this.pessoaFotoService = pessoaFotoService;
         this.emailService = emailService;
         this.rondaRepository = rondaRepository;
+        this.minioClient = minioClient;
+        this.bucket = bucket;
     }
 
     /** Pedido do Romulo: avisar por e-mail quando a demanda é aprovada/reprovada - só
@@ -261,7 +271,8 @@ public class DemandaService {
                             idsAcompanhados.contains(d.getId()),
                             perfilSolicitante(d, vinculosPorFuncionarioSolicitante),
                             funcaoSolicitante(d, vinculosPorFuncionarioSolicitante),
-                            statusKanbanDesdePorDemanda.get(d.getId())))
+                            statusKanbanDesdePorDemanda.get(d.getId()))
+                            .comPodeEditarOuExcluir(podeEditarOuExcluir(contexto, d)))
                     .toList();
         }
 
@@ -280,7 +291,8 @@ public class DemandaService {
                         false,
                         perfilSolicitante(d, vinculosPorFuncionarioSolicitante),
                         funcaoSolicitante(d, vinculosPorFuncionarioSolicitante),
-                        statusKanbanDesdePorDemanda.get(d.getId())))
+                        statusKanbanDesdePorDemanda.get(d.getId()))
+                        .comPodeEditarOuExcluir(podeEditarOuExcluir(contexto, d)))
                 .toList();
     }
 
@@ -399,7 +411,8 @@ public class DemandaService {
                             idsAcompanhados.contains(d.getId()),
                             perfilSolicitante(d, vinculosPorFuncionarioSolicitante),
                             funcaoSolicitante(d, vinculosPorFuncionarioSolicitante),
-                            null))
+                            null)
+                            .comPodeEditarOuExcluir(podeEditarOuExcluir(contexto, d)))
                     .toList();
         } else {
             Map<Integer, List<ResponsavelResumoResponse>> responsaveisPorDemanda =
@@ -418,7 +431,8 @@ public class DemandaService {
                             false,
                             perfilSolicitante(d, vinculosPorFuncionarioSolicitante),
                             funcaoSolicitante(d, vinculosPorFuncionarioSolicitante),
-                            null))
+                            null)
+                            .comPodeEditarOuExcluir(podeEditarOuExcluir(contexto, d)))
                     .toList();
         }
 
@@ -465,7 +479,85 @@ public class DemandaService {
         }
 
         Demanda salva = repository.save(demanda);
-        return DemandaResponse.from(salva, podeGerenciarSigilo(contexto, salva));
+        return DemandaResponse.from(salva, podeGerenciarSigilo(contexto, salva)).comPodeEditarOuExcluir(true);
+    }
+
+    /**
+     * Edição de título/descrição pelo próprio solicitante, só enquanto a demanda está
+     * pendente de aprovação (pedido do Romulo) - depois que um funcionário aprova ou recusa,
+     * o texto vira o que foi decidido e não muda mais. Nada além de título e descrição:
+     * sigilo/identificação do solicitante/ronda ficam como foram criados.
+     */
+    @Transactional
+    public DemandaResponse atualizar(ContextoAutenticado contexto, Integer id, DemandaAtualizarRequest request) {
+        Demanda demanda = buscarDemanda(id);
+        exigirSolicitanteDePendente(contexto, demanda, "editar");
+
+        demanda.setTitulo(request.titulo().trim());
+        demanda.setDescricao(request.descricao().trim());
+        Demanda salva = repository.save(demanda);
+
+        // Mesmas regras de visibilidade das listagens: morador só recebe etiqueta marcada
+        // como visível pra ele e nunca a lista de responsáveis (informação interna).
+        boolean ehMorador = TipoPessoa.morador.name().equals(contexto.tipoPapel());
+        List<EtiquetaResponse> etiquetas = ehMorador
+                ? buscarEtiquetas(salva.getId()).stream().filter(EtiquetaResponse::visivelMorador).toList()
+                : buscarEtiquetas(salva.getId());
+        EtapaFlags flagsEtapas = flagsEtapas(salva.getId());
+        return DemandaResponse.from(
+                        salva,
+                        etiquetas,
+                        podeGerenciarSigilo(contexto, salva),
+                        documentoRepository.existsByDemandaId(salva.getId()),
+                        temNotaPendente(salva.getId()),
+                        flagsEtapas.vencida(),
+                        flagsEtapas.vigente(),
+                        ehMorador ? List.of() : buscarResponsaveis(salva.getId()),
+                        false,
+                        false)
+                .comPodeEditarOuExcluir(true);
+    }
+
+    /**
+     * Exclusão física pelo próprio solicitante, só enquanto pendente (pedido do Romulo).
+     * Leva junto tudo que já pendurou nela (anexos - inclusive o arquivo no bucket -,
+     * notas, etapas, etiquetas, responsáveis, acessos de sigilo, "acompanhando" e histórico),
+     * já que nenhuma dessas tabelas faz sentido sem a demanda. Arquivos saem do bucket
+     * ANTES de qualquer linha do banco, mesma ordem segura de {@code
+     * DemandaDocumentoService#remover}: se o storage falhar, nada foi apagado do banco.
+     */
+    @Transactional
+    public void excluir(ContextoAutenticado contexto, Integer id) {
+        Demanda demanda = buscarDemanda(id);
+        exigirSolicitanteDePendente(contexto, demanda, "excluir");
+        Integer demandaId = demanda.getId();
+
+        List<DemandaDocumento> documentos = documentoRepository.findByDemandaId(demandaId);
+        for (DemandaDocumento documento : documentos) {
+            try {
+                minioClient.removeObject(
+                        RemoveObjectArgs.builder().bucket(bucket).object(documento.getUrl()).build());
+            } catch (Exception ex) {
+                throw new RuntimeException("Falha ao remover o arquivo do storage", ex);
+            }
+        }
+
+        acompanhamentoRepository.deleteAll(acompanhamentoRepository.findByDemandaId(demandaId));
+        acessoSigilosoRepository.deleteAll(acessoSigilosoRepository.findByDemandaId(demandaId));
+        demandaEtiquetaRepository.deleteAll(demandaEtiquetaRepository.findByDemandaId(demandaId));
+        responsavelRepository.deleteAll(responsavelRepository.findByDemandaId(demandaId));
+        historicoRepository.deleteAll(historicoRepository.findByDemandaIdOrderByCreatedAt(demandaId));
+        etapaRepository.deleteAll(etapaRepository.findByDemandaIdOrderByOrdem(demandaId));
+        documentoRepository.deleteAll(documentos);
+
+        // Nota responde a outra nota (id_nota_pai) - soltar o pai de todas antes, senão a
+        // ordem de DELETE do Hibernate pode apagar o pai antes do filho e quebrar a FK.
+        List<DemandaNota> notas = notaRepository.findByDemandaIdOrderByCreatedAtAsc(demandaId);
+        notas.forEach(nota -> nota.setNotaPai(null));
+        notaRepository.saveAllAndFlush(notas);
+        notaRepository.deleteAll(notas);
+
+        repository.delete(demanda);
     }
 
     /**
@@ -712,7 +804,8 @@ public class DemandaService {
                 flagsEtapas.vigente(),
                 buscarResponsaveis(salva.getId()),
                 false,
-                false);
+                false)
+                .comPodeEditarOuExcluir(podeEditarOuExcluir(contexto, salva));
     }
 
     /**
@@ -1233,6 +1326,33 @@ public class DemandaService {
                 .map(a -> new ResponsavelResumoResponse(
                         a.getFuncionario().getId(), a.getFuncionario().getNome(), fotosPorFuncionario.get(a.getFuncionario().getId())))
                 .toList();
+    }
+
+    /** Quem abriu a demanda - morador ou funcionário, conforme o papel de quem está logado. */
+    private boolean ehSolicitante(ContextoAutenticado contexto, Demanda demanda) {
+        if (TipoPessoa.morador.name().equals(contexto.tipoPapel())) {
+            return demanda.getMoradorSolicitante() != null
+                    && demanda.getMoradorSolicitante().getId().equals(contexto.pessoaId());
+        }
+        return ehFuncionarioSolicitante(contexto, demanda);
+    }
+
+    /** Alimenta {@code DemandaResponse.podeEditarOuExcluir} - mesma regra de {@link
+     * #exigirSolicitanteDePendente}, sem lançar. */
+    private boolean podeEditarOuExcluir(ContextoAutenticado contexto, Demanda demanda) {
+        return demanda.getStatusAprovacao() == DemandaStatusAprovacao.pendente
+                && demanda.getCondominio().getId().equals(contexto.condominioId())
+                && ehSolicitante(contexto, demanda);
+    }
+
+    private void exigirSolicitanteDePendente(ContextoAutenticado contexto, Demanda demanda, String acao) {
+        if (!demanda.getCondominio().getId().equals(contexto.condominioId()) || !ehSolicitante(contexto, demanda)) {
+            throw new ForbiddenException("Só quem abriu a demanda pode " + acao);
+        }
+        if (demanda.getStatusAprovacao() != DemandaStatusAprovacao.pendente) {
+            throw new ConflictException(
+                    "Essa demanda já foi " + demanda.getStatusAprovacao().name() + " - não dá mais pra " + acao);
+        }
     }
 
     private void exigirPendente(Demanda demanda) {

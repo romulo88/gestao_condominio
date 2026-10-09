@@ -17,4 +17,7 @@ public interface DemandaAcompanhamentoRepository extends JpaRepository<DemandaAc
     List<DemandaAcompanhamento> findByMoradorIdAndDemandaIdIn(Integer moradorId, List<Integer> demandaIds);
 
     void deleteByDemandaIdAndMoradorId(Integer demandaId, Integer moradorId);
+
+    /** Usado só pela exclusão da demanda pelo solicitante (ver {@code DemandaService#excluir}). */
+    List<DemandaAcompanhamento> findByDemandaId(Integer demandaId);
 }

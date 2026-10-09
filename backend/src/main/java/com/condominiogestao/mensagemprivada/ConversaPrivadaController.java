@@ -3,6 +3,7 @@ package com.condominiogestao.mensagemprivada;
 import com.condominiogestao.common.ErrorResponse;
 import com.condominiogestao.common.PaginaResponse;
 import com.condominiogestao.mensagemprivada.dto.CandidatoDestinatarioResponse;
+import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaAbrirRequest;
 import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaCreateRequest;
 import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaDetalheResponse;
 import com.condominiogestao.mensagemprivada.dto.ConversaPrivadaResumoResponse;
@@ -66,14 +67,19 @@ public class ConversaPrivadaController {
         return service.listarCandidatos(contexto);
     }
 
-    @GetMapping("/{id}")
-    @Operation(summary = "Abre uma conversa (chat completo)",
-            description = "Marca como vista por quem está abrindo - some o destaque vermelho.")
+    @PostMapping("/{id}/abrir")
+    @Operation(summary = "Abre uma conversa (chat completo), exigindo a senha do próprio usuário",
+            description = "A senha é conferida a cada abertura (computador compartilhado). Marca como vista por "
+                    + "quem está abrindo - some o destaque vermelho. É a única forma de ler uma conversa existente.")
+    @ApiResponse(responseCode = "400", description = "Senha incorreta",
+            content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     @ApiResponse(responseCode = "403", description = "Você não participa dessa conversa",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
-    public ConversaPrivadaDetalheResponse buscarDetalhe(
-            @AuthenticationPrincipal ContextoAutenticado contexto, @PathVariable Integer id) {
-        return service.buscarDetalhe(contexto, id);
+    public ConversaPrivadaDetalheResponse abrir(
+            @AuthenticationPrincipal ContextoAutenticado contexto,
+            @PathVariable Integer id,
+            @Valid @RequestBody ConversaPrivadaAbrirRequest request) {
+        return service.abrir(contexto, id, request.senha());
     }
 
     @GetMapping("/{id}/visualizacoes")

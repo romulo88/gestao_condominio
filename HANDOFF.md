@@ -6,6 +6,97 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v199)
+
+- **Sessão que não fica pra trás em computador compartilhado (v199, pedido do Romulo)** -
+  medo concreto: funcionário fecha o navegador sem clicar em "Sair" e o próximo cai na tela
+  dele (e, pior, nas conversas privadas do síndico). Cinco decisões do Romulo, todas feitas:
+  1. **"Manter conectado" removido** do login (o checkbox nem fazia nada).
+  2. **15 minutos de INATIVIDADE**: `jwt.expiracao-completo-ms` 12h → 15min. Não é a duração
+     total - enquanto a pessoa usa a tela, o token é renovado.
+  3. **Renovação por atividade, NÃO por chamada de API**: `POST /api/auth/renovar` (refaz o
+     `trocarContexto` no mesmo contexto, então confere o vínculo a cada renovação). O hook
+     `useRenovacaoSessao` (montado no `AppShell`) ouve clique/tecla/toque/mouse/rolagem e
+     renova no máximo a cada 3 min (prazo efetivo de inatividade: 12 a 15 min). Chamadas
+     automáticas (alertas do menu, mensagens pendentes) NÃO renovam - senão uma aba esquecida
+     nunca expiraria. **Rondista**: o envio de pontos de GPS bem-sucedido chama
+     `renovarSessaoSeVelha()` (tela parada caminhando não gera clique, mas está trabalhando).
+  4. **Senha a cada conversa privada aberta**: `POST /api/conversas-privadas/{id}/abrir`
+     `{senha}` substitui o `GET /{id}` (REMOVIDO - não dá pra contornar chamando a API
+     direto). Senha errada é **400**, não 401/403, de propósito (ver abaixo). Modal "Confirme
+     sua senha" com `autoComplete="new-password"` pro navegador não preencher sozinho uma
+     senha salva (anularia a confirmação). Tentativa com senha errada não entra no log de
+     auditoria. Criar uma conversa nova NÃO pede senha (a pessoa acabou de escrevê-la).
+  5. **Fechar o navegador encerra a sessão**: `sessionStorage` em vez de `localStorage`; o
+     que sobrou da sessão antiga em `localStorage` é apagado ao carregar o módulo
+     (`limparSessaoLegada`, também na tela de login). Consequência aceita: abrir o sistema
+     numa aba NOVA pede login de novo.
+  - **Armadilha evitada (importante pra quem mexer aqui)**: `Sessao.token` é o token do LOGIN
+    e fica ESTÁVEL de propósito - telas usam ele como dependência de `useEffect` (a tela de
+    ronda reiniciaria o rastreamento de GPS a cada renovação) e `SinoTarefas`/
+    `AlertaMudancasStatus` o usam como chave de "alerta já mostrado" (reapareceriam a cada
+    renovação). O token que vai ao servidor é outro, guardado em `sessionStorage`
+    (`commander:token`, com `obtidoEm`), e `bearer()` em `api.ts` resolve ele sozinho em toda
+    chamada (headers e `urlImagem`). Por isso as telas continuam passando `sessao.token`.
+    `salvarSessao` só reinicia o token de verdade quando `sessao.token` muda (login/troca de
+    perfil) - reescrever a sessão com o mesmo token (aceitar o termo) não pode reverter pro
+    token do login, que já pode ter vencido.
+  - **Sessão expirada**: token vencido/inválido NÃO passa pelo handler de erros do backend, o
+    Spring Security responde 403 com corpo VAZIO (verificado). `parseOrThrow` trata "401/403
+    sem corpo estando logado" como sessão acabada: limpa a sessão e `useSessaoObrigatoria`
+    leva pro login. Recusa de regra de negócio sempre traz JSON, então não derruba ninguém.
+    O prazo local é medido pelo relógio do navegador desde `obtidoEm` (não pelo `exp` do JWT) -
+    computador com a hora errada não derruba todo mundo.
+  - **Fora do código, ainda vale**: configurar o navegador dos computadores compartilhados pra
+    NÃO salvar senhas. **Limite**: o servidor não revoga token antes de vencer ("Sair" só
+    apaga a sessão no navegador); 15 min limita o estrago de um token vazado.
+  - **Testado ao vivo**: token do login com 15 min; `/renovar` devolve token novo com os mesmos
+    claims e `iat` maior; token adulterado → 403 sem corpo; `/abrir` sem senha 400, errada 400
+    ("Senha incorreta"), certa 200, não participante 403; auditoria registrou só a abertura
+    certa; GET antigo fechado. No navegador: login real grava só em `sessionStorage` e
+    `localStorage` fica vazio; sessão legada apagada; renovação trocou o token do servidor sem
+    mexer em `sessao.token`; aceitar o termo preservou o token renovado; senha errada mantém o
+    modal com o erro e sem derrubar a sessão; senha certa abre com marca d'água; voltar e
+    reabrir pede senha de novo; 16 min de inatividade simulados → sessão apagada e login; token
+    recusado pelo servidor → sessão apagada e login. Dados de teste limpos.
+  - **Pendência deliberada**: a LISTA de conversas ainda mostra a prévia da última mensagem
+    sem pedir senha (o pedido foi senha ao abrir cada conversa). Esconder a prévia é trocar uma
+    linha na tela, se o Romulo quiser.
+
+## Estado atual (v198)
+
+- **Editar e excluir a própria demanda enquanto pendente (v198, pedido do Romulo)** - quem
+  abriu a demanda (morador ou funcionário) ganha lápis (editar título e descrição) e lixeira
+  (excluir) na linha da demanda, só enquanto `statusAprovacao` é `pendente`. Sem migration.
+  - **Backend**: `PATCH /api/demandas/{id}` (`DemandaAtualizarRequest`: só título e descrição,
+    nada de sigilo/identificação/ronda) e `DELETE /api/demandas/{id}`. Mesma autorização nos
+    dois (`exigirSolicitanteDePendente`): 403 pra quem não abriu (inclusive síndico), 409 depois
+    de aprovada/recusada.
+  - **`DemandaResponse.podeEditarOuExcluir`**: calculado no servidor, NÃO inferido na tela - com
+    `identificarSolicitante` falso o nome do solicitante nem vem na resposta (demanda de morador
+    é anônima por padrão), então a tela não teria como saber quem é o dono. As fábricas `from`
+    nascem com `false` e quem tem o viewer aplica `comPodeEditarOuExcluir` (listagens, `criar`,
+    `alternarSigilo`); as ações de gestão (aprovar/reprovar/mover/arquivar) devolvem `false`
+    porque já não está mais pendente.
+  - **Exclusão é física e em cascata**: anexos (incluindo o arquivo no MinIO, apagado ANTES de
+    qualquer linha do banco - mesma ordem segura de `DemandaDocumentoService.remover`), notas,
+    etapas, etiquetas, responsáveis, acessos de sigilo, "acompanhando" e histórico. Notas se
+    respondem entre si (`id_nota_pai`): o pai é solto de todas antes de apagar, senão a ordem
+    de DELETE do Hibernate pode quebrar a FK. Decisão consciente: leva junto também o que outras
+    pessoas já penduraram nela (resposta do síndico a uma nota, por exemplo) - a confirmação
+    do navegador avisa que não dá pra desfazer.
+  - **Frontend** (`/demandas`): lápis abre um formulário (título + `MarkdownEditor`, o mesmo do
+    cadastro) no lugar da descrição, na área expandida da linha; ao salvar só título/descrição/
+    `updatedAt` são trocados no item local (a resposta isolada não recalcula perfil do
+    solicitante nem flags de nota/etapa, que vêm de cálculos em lote da listagem). Lixeira
+    pede confirmação e recarrega a página atual (paginação de verdade: total e itens mudam).
+  - **Testado ao vivo**: flag `true` pro autor (inclusive em demanda anônima) e `false` pro
+    síndico; PATCH 200 autor / 403 outro morador e síndico; DELETE 403 pros dois e 204 pro autor
+    com anexo + nota + resposta (linhas e objeto do bucket sumiram); 409 em PATCH e DELETE
+    depois do síndico aprovar; 400 com título em branco; na tela, lápis/lixeira só na pendente
+    (a aprovada não tem), edição refletiu na hora e a exclusão atualizou a lista. Dados de teste
+    limpos.
+
 ## Estado atual (v197)
 
 - **Autocomplete de "visitante recorrente" + foto reaproveitada (v197, pedido do Romulo)** -

@@ -145,6 +145,17 @@ public class AuthService {
         return new TokenResponse(jwtService.gerarTokenCompleto(pessoa, escolhido));
     }
 
+    /**
+     * Renova o token de quem já está logado, no MESMO contexto (condomínio + papel) - pedido do
+     * Romulo: o token dura 15 minutos e o frontend renova enquanto a pessoa está ativa. Passa
+     * por {@link #encontrarContexto}, então o vínculo é conferido de novo a cada renovação:
+     * quem foi desativado perde a sessão em até 15 minutos, sem esperar o login seguinte.
+     */
+    public TokenResponse renovar(ContextoAutenticado contexto) {
+        return trocarContexto(
+                contexto, new SelecionarContextoRequest(contexto.condominioId(), TipoPessoa.valueOf(contexto.tipoPapel())));
+    }
+
     private Pessoa buscarPessoa(Integer pessoaId) {
         return pessoaRepository
                 .findById(pessoaId)
