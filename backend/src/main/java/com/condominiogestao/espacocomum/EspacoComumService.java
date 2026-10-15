@@ -58,6 +58,7 @@ public class EspacoComumService {
         EspacoComum espaco = new EspacoComum();
         espaco.setCondominio(condominio);
         espaco.setNome(request.nome());
+        espaco.setMaxVisitantes(request.maxVisitantes());
 
         return EspacoComumResponse.from(repository.save(espaco));
     }
@@ -73,6 +74,7 @@ public class EspacoComumService {
         }
 
         espaco.setNome(request.nome());
+        espaco.setMaxVisitantes(request.maxVisitantes());
         if (request.situacao() != null) {
             espaco.setSituacao(request.situacao());
         }

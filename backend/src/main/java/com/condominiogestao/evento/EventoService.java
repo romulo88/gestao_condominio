@@ -126,6 +126,7 @@ public class EventoService {
                 .findById(contexto.pessoaId())
                 .orElseThrow(() -> new ResourceNotFoundException("Morador não encontrado: " + contexto.pessoaId()));
         EspacoComum espacoComum = resolverEspacoComum(request.espacoComumId(), contexto.condominioId());
+        exigirDentroDoLimiteDeVisitantes(espacoComum, request.pessoas().size());
         String horario = request.horario() == null || request.horario().isBlank() ? null : request.horario().trim();
         String unidade = buscarUnidade(morador.getId(), contexto.condominioId());
         // "Visitante recorrente" (pedido do Romulo): calculado UMA VEZ, antes do laço de
@@ -241,6 +242,10 @@ public class EventoService {
         if (totalPessoas == 0) {
             throw new InvalidRequestException("informe ao menos 1 pessoa");
         }
+        // Conta TODAS as pessoas do evento (inclusive as já liberadas, que a sincronização
+        // preserva mesmo fora da lista) contra o espaço FINAL - a edição pode ter trocado de
+        // espaço. Lançar aqui desfaz a transação inteira, inclusive o que a sincronização gravou.
+        exigirDentroDoLimiteDeVisitantes(evento.getEspacoComum(), totalPessoas);
 
         return buscarDetalhe(contexto, eventoId);
     }
@@ -659,6 +664,19 @@ public class EventoService {
                         pessoasPorEvento.getOrDefault(evento.getId(), List.of()),
                         true))
                 .toList();
+    }
+
+    /** Máximo de visitantes do espaço de lazer (pedido do Romulo) - conta as PESSOAS do evento
+     * (veículo não é visitante). Sem validação quando o evento é na própria unidade (espaço
+     * nulo) ou quando o espaço não tem máximo cadastrado (nulo - espaços anteriores à V40). */
+    private void exigirDentroDoLimiteDeVisitantes(EspacoComum espaco, long totalPessoas) {
+        if (espaco == null || espaco.getMaxVisitantes() == null) {
+            return;
+        }
+        if (totalPessoas > espaco.getMaxVisitantes()) {
+            throw new InvalidRequestException("\"" + espaco.getNome() + "\" comporta no máximo "
+                    + espaco.getMaxVisitantes() + " visitantes - você informou " + totalPessoas);
+        }
     }
 
     /** Nulo = própria unidade do morador. Não nulo: precisa existir, pertencer ao mesmo

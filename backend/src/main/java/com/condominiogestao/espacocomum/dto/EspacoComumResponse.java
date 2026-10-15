@@ -5,7 +5,14 @@ import com.condominiogestao.espacocomum.EspacoComum;
 import java.time.LocalDateTime;
 
 public record EspacoComumResponse(
-        Integer id, Integer condominioId, String nome, Situacao situacao, LocalDateTime createdAt, LocalDateTime updatedAt) {
+        Integer id,
+        Integer condominioId,
+        String nome,
+        Situacao situacao,
+        /** Nulo = não informado - a tela do morador só mostra o aviso quando preenchido. */
+        Integer maxVisitantes,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt) {
 
     public static EspacoComumResponse from(EspacoComum espaco) {
         return new EspacoComumResponse(
@@ -13,6 +20,7 @@ public record EspacoComumResponse(
                 espaco.getCondominio().getId(),
                 espaco.getNome(),
                 espaco.getSituacao(),
+                espaco.getMaxVisitantes(),
                 espaco.getCreatedAt(),
                 espaco.getUpdatedAt());
     }

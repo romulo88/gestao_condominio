@@ -6,6 +6,42 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v200)
+
+- **Máximo de visitantes do espaço de lazer (v200, pedido do Romulo)** - no cadastro do espaço
+  (aba "Espaços de Lazer" do condomínio), campo "Máx. visitantes"; quando o morador escolhe um
+  espaço no formulário de evento (exceto "Minha unidade"), aparece um aviso fixo no topo:
+  "Quantidade máxima de visitantes: N".
+  - **Migration `V40`**: `espacos_comuns.max_visitantes INTEGER` com CHECK `> 0`. **Nullable de
+    propósito**: os espaços que já existiam não têm o dado, e o aviso simplesmente não aparece
+    neles (ninguém precisa inventar número pra espaço antigo). Validação `@Min(1)` nos DTOs.
+  - **Armadilha no `PATCH`**: `maxVisitantes` omitido/nulo **LIMPA** o valor (é o único jeito de
+    apagar o limite) - diferente de `situacao`, onde omitido não muda nada. Por isso o
+    "Inativar/Reativar" da tela reenvia o valor atual; senão inativar um espaço apagaria o
+    limite sem ninguém perceber. `atualizarEspacoComum` em `api.ts` exige o campo no tipo
+    (`number | null`), pra um chamador novo não esquecer.
+  - **Aviso do morador**: `role="status"`, `sticky top-2` dentro do formulário (não some e fica
+    visível enquanto a pessoa rola até a lista de pessoas), sem botão de fechar. Calculado em
+    cima de `espacos` já carregado - não há chamada nova. Também aparece na edição de um evento.
+  - **Validação do limite (pedido seguinte do Romulo)**: o cadastro de pessoas do evento passou
+    a respeitar o máximo. Backend: `EventoService.exigirDentroDoLimiteDeVisitantes` (400
+    `"<espaço>" comporta no máximo N visitantes - você informou M`), chamada em `criar`
+    (uma vez, ANTES do laço de dias da reforma) e em `atualizar` (DEPOIS da sincronização, contra
+    o espaço FINAL - a edição pode ter trocado de espaço - e contando também as pessoas já
+    liberadas que a sincronização preserva; a exceção desfaz a transação inteira, testado:
+    as pessoas continuam as de antes). Só conta PESSOAS (veículo não é visitante). Sem validação
+    com "Minha unidade" nem com espaço sem máximo cadastrado. Frontend: o rótulo mostra "Pessoas
+    (nome + documento) — 3 de 45" (vermelho quando passa) e o envio é barrado na tela antes de
+    chamar a API, com a mensagem "...Remova N". **Efeito a conhecer**: se o síndico REDUZIR o
+    máximo de um espaço depois de existirem eventos acima do novo limite, o morador não consegue
+    salvar nenhuma edição desse evento (nem só o motivo) até remover pessoas - a validação
+    roda em toda edição, não só quando o número de pessoas aumenta.
+  - **Testado ao vivo**: criar com e sem limite, 0 → 400, editar, limpar com null, inativar
+    reenviando (mantém) e omitindo (limpa, como documentado); no navegador o aviso aparece com o
+    espaço que tem limite (45), não aparece com "Minha unidade" nem com espaço sem limite;
+    síndico vê o campo, a listagem "até 45 visitantes" e inativar pela tela mantém o 45. Dados
+    de teste limpos (os 11 espaços reais ficaram intactos).
+
 ## Estado atual (v199)
 
 - **Sessão que não fica pra trás em computador compartilhado (v199, pedido do Romulo)** -

@@ -47,6 +47,11 @@ public class EspacoComum {
     @Column(length = 50, nullable = false)
     private String nome;
 
+    /** Máximo de visitantes que o espaço comporta (pedido do Romulo) - mostrado ao morador
+     * ao escolher o espaço num evento. Nulo = não informado (espaços anteriores a V40). */
+    @Column(name = "max_visitantes")
+    private Integer maxVisitantes;
+
     @Enumerated(EnumType.STRING)
     @Column(length = 30, nullable = false)
     private Situacao situacao = Situacao.ativo;
