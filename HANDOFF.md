@@ -6,6 +6,27 @@
 
 Aplicação web com Postgres para gestão de condomínios: cadastro de condomínios, funcionários, moradores, e um fluxo completo de **demandas** (pedido do morador → aprovação → fila → kanban → conclusão), com etapas internas, documentos anexos e sigilo controlado.
 
+## Estado atual (v201)
+
+- **Horário errado na produção (v201, achado do Romulo)** - ronda iniciada 11:39 aparecia
+  como 14:39. **Causa**: o sistema guarda/lê tudo como `LocalDateTime`/`LocalDate` "de parede"
+  (sem fuso) e o frontend mostra o que vem; o container de produção (JRE alpine) roda em
+  **UTC**, então `LocalDateTime.now()` saía 3h adiantado - em TODO o sistema (demandas, notas,
+  rondas...), não só na ronda. Na máquina do Romulo (Windows em horário de Brasília) nunca
+  aparecia. **Correção**: `CondominioGestaoApplication.main` faz `TimeZone.setDefault`
+  (`America/Sao_Paulo`, ou `APP_TIMEZONE`) ANTES do Spring - o driver do Postgres lê o fuso
+  da JVM ao abrir a conexão, então os `DEFAULT CURRENT_TIMESTAMP` das tabelas acompanham.
+  Efeito colateral bom: `LocalDate.now()` não vira o dia seguinte depois das 21h nas regras de
+  evento. **Não dá pra reproduzir localmente** (a máquina já está no fuso certo) - só foi
+  confirmado que não há regressão (ronda e ponto de GPS gravam o horário local); uma tentativa
+  de subir uma 2ª cópia do backend forçando `-Duser.timezone=UTC` falhou por erro de socket do
+  Windows, mas o log dela já saiu com `-03:00`, indício de que o override vale.
+  - ⚠️ **Dados antigos da produção seguem 3h adiantados** (gravados em UTC); só os novos ficam
+    certos. Corrigir os antigos exigiria subtrair 3h de várias tabelas direto no banco de
+    produção - não feito de propósito (arriscado e não dá pra rodar como migration Flyway, que
+    também rodaria no banco local, que já está certo). Só passa a valer em produção no
+    próximo deploy.
+
 ## Estado atual (v200)
 
 - **Máximo de visitantes do espaço de lazer (v200, pedido do Romulo)** - no cadastro do espaço
